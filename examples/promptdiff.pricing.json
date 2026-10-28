@@ -1,0 +1,7 @@
+{
+  "_comment": "Prices in USD per 1M tokens, keyed by provider:model-id. Merged over the built-in table. The values below are placeholders: replace them with your provider's current prices.",
+  "models": {
+    "openai:your-model-id": { "input": 1.0, "output": 4.0 },
+    "google:your-model-id": { "input": 1.0, "output": 4.0 }
+  }
+}

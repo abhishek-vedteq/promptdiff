@@ -1,0 +1,6 @@
+{"id": "refund", "input": "I was charged twice for my order #4821. Can I get a refund?"}
+{"id": "refund-no-order", "input": "You billed me twice this month. Fix it."}
+{"id": "password-reset", "input": "I can't log in. The password reset email never arrives."}
+{"id": "angry", "input": "This is the third time I'm writing. Your product deleted my data!!"}
+{"id": "off-topic", "input": "What's a good recipe for banana bread?"}
+{"id": "pricing", "input": "How much does the 2TB plan cost per year?"}

@@ -1,0 +1,79 @@
+{
+  "name": "promptdiff",
+  "version": "0.1.0",
+  "description": "git diff for prompts: run test cases through two versions of a prompt and diff the outputs",
+  "type": "module",
+  "bin": {
+    "promptdiff": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "pricing.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run lint && npm test && npm run build"
+  },
+  "keywords": [
+    "prompt",
+    "llm",
+    "diff",
+    "cli",
+    "testing",
+    "evals",
+    "anthropic",
+    "openai",
+    "gemini"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abhishek-vedteq/promptdiff.git"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.91",
+    "@ai-sdk/google": "^4.0.107",
+    "@ai-sdk/openai": "^4.0.104",
+    "@clack/prompts": "^1.8.1",
+    "ai": "^7.0.156",
+    "ajv": "^8.20.0",
+    "chalk": "^6.0.1",
+    "commander": "^15.0.0",
+    "diff": "^9.0.0",
+    "ink": "^8.0.0",
+    "ink-text-input": "^6.0.0",
+    "p-limit": "^7.3.3",
+    "react": "^19.3.1",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "eslint": "^10.13.0",
+    "ink-testing-library": "^4.0.0",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  }
+}

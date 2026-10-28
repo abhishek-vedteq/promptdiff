@@ -1,0 +1,17 @@
+{
+  "_comment": "USD per 1M tokens, keyed by \"provider:model-id\". Copy entries into your own promptdiff.pricing.json (or the file set by `pricing:` in promptdiff.config.yaml) to add models or override prices. Models missing from both files report tokens but 'cost unknown'. Anthropic prices as of 2026-10; verify at https://www.anthropic.com/pricing.",
+  "models": {
+    "anthropic:claude-fable-5-1": { "input": 10, "output": 50 },
+    "anthropic:claude-fable-5": { "input": 10, "output": 50 },
+    "anthropic:claude-opus-5-5": { "input": 4, "output": 20 },
+    "anthropic:claude-opus-5": { "input": 5, "output": 25 },
+    "anthropic:claude-opus-4-8": { "input": 5, "output": 25 },
+    "anthropic:claude-opus-4-7": { "input": 5, "output": 25 },
+    "anthropic:claude-opus-4-6": { "input": 5, "output": 25 },
+    "anthropic:claude-sonnet-5-5": { "input": 2, "output": 10 },
+    "anthropic:claude-sonnet-5": { "input": 2, "output": 10 },
+    "anthropic:claude-sonnet-4-6": { "input": 3, "output": 15 },
+    "anthropic:claude-haiku-5-5": { "input": 0.1, "output": 0.5 },
+    "anthropic:claude-haiku-4-5": { "input": 1, "output": 5 }
+  }
+}

@@ -1,0 +1,13 @@
+export { classify, variationStats, wordDistance, type CaseStatus, type VariationStats } from "./analysis.js";
+export { ResultCache, cacheKey, type CachedResult } from "./cache.js";
+export { parseCases, loadCases, type TestCase } from "./cases.js";
+export { runCommand, EXIT_OK, EXIT_ERROR, EXIT_CHANGED } from "./commands/run.js";
+export { PromptdiffError } from "./errors.js";
+export { readFileAtRef } from "./git.js";
+export { estimateCost, type PricingTable } from "./pricing.js";
+export { registerProvider, listProviders, parseModelSpec } from "./providers/registry.js";
+export { AiSdkProvider } from "./providers/ai-sdk.js";
+export { MockProvider } from "./providers/mock.js";
+export type { Provider, ProviderDefinition, GenerateRequest, GenerateResponse } from "./providers/types.js";
+export { runDiff, type RunnerOptions } from "./runner.js";
+export type { DiffReport, CaseResult, RunOutput, VersionTotals } from "./types.js";

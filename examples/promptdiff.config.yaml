@@ -1,0 +1,7 @@
+# Example project config. Copy to the root of your repo.
+model: anthropic:claude-opus-5-5
+cases: cases.jsonl
+concurrency: 4
+runs: 3
+maxOutputTokens: 1024
+base: main

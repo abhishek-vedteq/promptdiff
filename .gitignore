@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+.promptdiff/
+*.log
+.DS_Store
+promptdiff-report.html
