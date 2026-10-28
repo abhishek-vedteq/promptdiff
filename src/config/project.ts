@@ -26,6 +26,13 @@ export const projectConfigSchema = z
     compare: z.enum(["words", "semantic"]).optional(),
     /** Model for llm-rubric checks and semantic comparison. Defaults to `model`. */
     judge: z.string().min(1).optional(),
+    /**
+     * Where prompts live (globs, relative to this file). Code files list their exported
+     * prompt constants; "file.ts#NAME" picks one. An entry can name its own test cases.
+     */
+    prompts: z
+      .array(z.union([z.string().min(1), z.object({ path: z.string().min(1), cases: z.string().min(1).optional() }).strict()]))
+      .optional(),
     /** Default template variables; a case's own vars override these. */
     vars: varsSchema.optional(),
     /** Assertions applied to every test case, before the case's own. */
@@ -73,7 +80,7 @@ export function parseProjectConfig(text: string, file = PROJECT_CONFIG_FILE): Pr
       .map((i) => `  - ${i.path.length ? i.path.join(".") : "(root)"}: ${i.message}`)
       .join("\n");
     throw new PromptdiffError(`${file} is invalid:\n${details}`, {
-      hint: "Valid keys: model, temperature, maxOutputTokens, cases, concurrency, runs, base, pricing, maxCost, confirmAbove, compare, judge, vars, assert. See docs/configuration.md.",
+      hint: "Valid keys: model, temperature, maxOutputTokens, cases, concurrency, runs, base, pricing, maxCost, confirmAbove, compare, judge, prompts, vars, assert. See docs/configuration.md.",
     });
   }
   return parsed.data;

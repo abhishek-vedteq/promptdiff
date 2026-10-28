@@ -4,12 +4,15 @@ import { PROJECT_CONFIG_FILE } from "../config/project.js";
 
 type Out = { write(s: string): unknown };
 
-export const SAMPLE_CONFIG = `# promptdiff project config. CLI flags override these values.
+export const DEFAULT_INIT_MODEL = "anthropic:claude-opus-5-5";
+
+/** The sample config, with the model the user actually has set up. */
+export const sampleConfig = (model = DEFAULT_INIT_MODEL) => `# promptdiff project config. CLI flags override these values.
 # Docs: https://github.com/abhishek-vedteq/promptdiff/blob/main/docs/configuration.md
 
-# Model as <provider>:<model-id>. Providers: anthropic, openai, google.
-# The model id is passed through as-is, so any model your provider offers works.
-model: anthropic:claude-opus-5-5
+# Model as <provider>:<model-id>. Providers: anthropic, openai, google,
+# claude-code and codex (your logged-in CLI). Any model id your provider offers works.
+model: ${model}
 
 # Test cases, one JSON object per line: {"id": "...", "input": "..."}
 cases: cases.jsonl
@@ -78,9 +81,33 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-export async function initCommand(opts: { force?: boolean }, cwd = process.cwd(), out: Out = process.stdout): Promise<void> {
+export const SAMPLE_CONFIG = sampleConfig();
+
+/** A sample support-bot prompt, for people who don't have a prompt file yet. */
+export const SAMPLE_PROMPT = `You are the customer support assistant for Acme Cloud Storage.
+
+Guidelines:
+- Be concise: answer in at most 4 sentences.
+- Be warm, and acknowledge frustration when the customer is upset.
+- For billing problems (double charges, refunds), explain that refunds are processed within 5 business days and ask for the order number if it wasn't given.
+- For login problems, suggest checking the spam folder and offer a manual reset link.
+- If the question is unrelated to Acme, politely say you can only help with Acme Cloud Storage.
+`;
+
+export async function initCommand(
+  opts: { force?: boolean; model?: string },
+  cwd = process.cwd(),
+  out: Out = process.stdout,
+): Promise<void> {
+  let model = opts.model;
+  if (!model) {
+    // Write the model the user can actually run, if one is set up.
+    const { detectDefaultModel } = await import("../detect.js");
+    const { readUserConfig } = await import("../config/keys.js");
+    model = (await detectDefaultModel(await readUserConfig()).catch(() => undefined))?.model;
+  }
   const files: [string, string][] = [
-    [PROJECT_CONFIG_FILE, SAMPLE_CONFIG],
+    [PROJECT_CONFIG_FILE, sampleConfig(model)],
     ["cases.jsonl", SAMPLE_CASES],
   ];
   for (const [name, content] of files) {

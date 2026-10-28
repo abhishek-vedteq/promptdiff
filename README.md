@@ -39,7 +39,7 @@ Summary
 
 ## Why promptdiff
 
-**Prompts are code. Treat them that way.** Your prompts already live in git, so promptdiff compares them the way you compare code: against a branch, a tag, or a commit.
+**Prompts are code. Treat them that way.** Your prompts already live in git, so promptdiff compares them the way you compare code: against a branch, a tag, or a commit. They can be text files, or constants in your TypeScript, JavaScript, or Python code (`email.prompt.ts#SYSTEM_PROMPT`, `prompts.py#SYSTEM_PROMPT`): promptdiff follows the imports and builds the exact text, without running your code.
 
 **Real changes, not randomness.** LLMs rarely give the same answer twice. Run each case a few times, or let an LLM judge compare outputs by meaning, and promptdiff tells you whether a difference is a real change or just rewording. Every case is labeled **changed**, **noise**, or **identical**.
 
@@ -78,6 +78,7 @@ Requires Node.js 22+ and git. Works on macOS, Linux, and Windows.
 - Colored, word-level diffs, side by side in your terminal
 - Noise detection across multiple runs (`--runs 3`), or by meaning with an LLM judge (`--compare semantic`)
 - Checks: `contains`, regex, JSON Schema, length limits, and plain-English rubrics
+- Prompts in text files or in code: reads constants from TypeScript, JavaScript, and Python, following imports, packages, and path aliases
 - Prompt templates with `{{variables}}`, and multi-turn conversation test cases
 - Cost estimate before every run, `--dry-run`, and `--max-cost` budgets
 - Changes in tokens, latency, and cost per case and overall
@@ -96,6 +97,7 @@ Requires Node.js 22+ and git. Works on macOS, Linux, and Windows.
 | --- | --- |
 | [Getting started](./docs/getting-started.md) | Install, set up, and run your first diff |
 | [Logging in](./docs/api-keys.md) | API keys, browser login, your Claude Code / Codex login, CI variables |
+| [Prompts in code](./docs/prompts-in-code.md) | Comparing prompts stored in TypeScript, JavaScript, or Python |
 | [Test cases](./docs/test-cases.md) | The `cases.jsonl` format, templates, and conversations |
 | [Assertions](./docs/assertions.md) | Checks that every output must pass |
 | [LLM judge](./docs/llm-judge.md) | Rubric grading and comparing outputs by meaning |

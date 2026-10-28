@@ -31,12 +31,17 @@ src/
   providers/          Provider interface, registry, AI SDK adapter, mock
   config/             user key store, project YAML config, flag precedence
   git.ts              reading files at refs (execFile, never a shell)
+  code-prompts.ts     reading prompt constants from TS/JS without running code
+  python-prompts.ts   reading prompts from Python, via python/extract_prompts.py (Python's own parser)
+  prompt-source.ts    loading a prompt ("file" or "file.ts#NAME") at a git ref or the working copy
+  prompts.ts          finding prompts in a project
   cases.ts            JSONL test-case parsing
   runner.ts           concurrency, retries, caching, per-case results
   analysis.ts         identical / noise / changed classification
   cache.ts            on-disk result cache
   pricing.ts          cost estimates from pricing.json
   report/             terminal, JSON, and HTML output
+python/               the Python helper, shipped in the npm package
 test/                 vitest tests (mock provider only)
 docs/                 user documentation
 ```

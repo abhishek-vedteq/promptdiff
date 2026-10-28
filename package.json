@@ -16,6 +16,7 @@
   },
   "files": [
     "dist",
+    "python",
     "pricing.json",
     "README.md",
     "LICENSE"
@@ -52,6 +53,7 @@
     "@ai-sdk/anthropic": "^4.0.91",
     "@ai-sdk/google": "^4.0.107",
     "@ai-sdk/openai": "^4.0.104",
+    "@babel/parser": "^8.0.8",
     "@clack/prompts": "^1.8.1",
     "ai": "^7.0.156",
     "ajv": "^8.20.0",
@@ -61,13 +63,16 @@
     "ink": "^8.0.0",
     "ink-text-input": "^6.0.0",
     "p-limit": "^7.3.3",
+    "picomatch": "^4.0.7",
     "react": "^19.3.1",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@babel/types": "^8.0.8",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.6",
+    "@types/picomatch": "^4.0.3",
     "@types/react": "^19.3.0",
     "eslint": "^10.13.0",
     "ink-testing-library": "^4.0.0",

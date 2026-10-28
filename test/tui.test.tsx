@@ -53,6 +53,8 @@ function fakeDeps(over: Partial<ControllerDeps> = {}): ControllerDeps & { calls:
     cases: async (file: string) => ({ file, count: 6, conversations: 1 }),
     init: async (out: { write(s: string): unknown }) => void out.write("  created  cases.jsonl\n"),
     openFile: vi.fn(),
+    gitInit: async () => {},
+    createSamplePrompt: async () => "prompts/support.md",
     ...over,
   };
 }
@@ -109,9 +111,8 @@ describe("App", () => {
     expect(frame).toContain("± promptdiff");
     expect(frame).toContain("main");
     expect(frame).toContain("Prompt files  1 changed since HEAD");
-    expect(frame).toContain("› ● prompts/support.md");
-    expect(frame).toContain("+1 −1");
-    expect(frame).toContain("○ prompts/sales.md");
+    expect(frame).toMatch(/› ● \+1 −1 +prompts\/support\.md/);
+    expect(frame).toMatch(/○ unchanged +prompts\/sales\.md/);
     expect(frame).toContain("claude-code:default ✓ ready");
     expect(frame).toContain("enter compare");
     expect(frame).not.toMatch(/[⏺⎿✻]/);
@@ -138,14 +139,15 @@ describe("App", () => {
     unmount();
   });
 
-  it("explains a model that isn't ready instead of running", async () => {
+  it("a model that isn't ready becomes a setup step, fixed with enter", async () => {
     const { lastFrame, stdin, deps, unmount } = await start({}, { model: "anthropic:claude-opus-5-5" });
-    expect(lastFrame()).toContain("✗ no Anthropic API key");
-    expect(lastFrame()).toContain("claude-code:default is ready");
+    expect(lastFrame()).toContain("○ 2. A model to run prompts");
+    expect(lastFrame()).toContain("anthropic:claude-opus-5-5: no Anthropic API key. claude-code:default is ready to use.");
+    expect(lastFrame()).toContain("enter to use claude-code:default");
     stdin.write("\r");
-    await tick();
+    await tick(80);
     expect(deps.calls).toHaveLength(0);
-    expect(lastFrame()).toContain("Press m to choose a model");
+    expect(lastFrame()).toContain("Using claude-code:default.");
     unmount();
   });
 
@@ -168,7 +170,7 @@ describe("App", () => {
     stdin.write("\r");
     await tick();
     expect(controller.settings.model).toBe("codex:default");
-    expect(lastFrame()).toContain("Using codex:default for this session");
+    expect(lastFrame()).toContain("codex:default");
     unmount();
   });
 
@@ -207,13 +209,70 @@ describe("App", () => {
     unmount();
   });
 
-  it("explains empty states", async () => {
-    const notRepo = await start({ isRepo: async () => false });
-    expect(notRepo.lastFrame()).toContain("This folder isn't a git repository.");
-    notRepo.unmount();
-    const noCases = await start({ cases: async (f: string) => ({ file: f, error: "none yet (cases.jsonl not found). Press i to create sample files." }) });
-    expect(noCases.lastFrame()).toContain("Press i to create sample files");
-    expect(noCases.lastFrame()).toContain("i create sample files");
-    noCases.unmount();
+  it("walks a new user through setup, one step at a time", async () => {
+    // A brand-new folder: no repo, no cases, no prompts. Each fix makes the next step possible.
+    const state = { repo: false, cases: false, prompt: false };
+    const { lastFrame, stdin, controller, unmount } = await start({
+      isRepo: async () => state.repo,
+      gitInit: async () => void (state.repo = true),
+      cases: async (f: string) => (state.cases ? { file: f, count: 5, conversations: 0 } : { file: f, error: "not found" }),
+      init: async (out: { write(s: string): unknown }) => {
+        state.cases = true;
+        out.write("  created  cases.jsonl\n");
+      },
+      promptFiles: async () => (state.prompt ? [{ path: "prompts/support.md", changed: false }] : []),
+      createSamplePrompt: async () => {
+        state.prompt = true;
+        return "prompts/support.md";
+      },
+    });
+    let frame = lastFrame()!;
+    expect(frame).toContain("Let's get you set up  1 of 4 done");
+    expect(frame).toContain("› ○ 1. A git repository");
+    expect(frame).toContain("enter to run `git init` here");
+    expect(frame).toContain("✓ 2. A model to run prompts");
+    expect(frame).toContain("Press ? for help");
+
+    stdin.write("\r"); // git init
+    await tick(80);
+    frame = lastFrame()!;
+    expect(frame).toContain("Created a git repository here.");
+    expect(frame).toContain("› ○ 3. Test cases");
+
+    stdin.write("\r"); // create cases
+    await tick(80);
+    expect(lastFrame()).toContain("› ○ 4. A prompt file, committed to git");
+
+    stdin.write("\r"); // create + commit sample prompt
+    await tick(80);
+    expect(controller.setupComplete).toBe(true);
+    frame = lastFrame()!;
+    expect(frame).toContain("You're all set. Next: open prompts/support.md in your editor");
+    expect(frame).toContain("Prompt files");
+    unmount();
   });
+
+  it("tells the user the next step once set up", async () => {
+    const { lastFrame, unmount } = await start();
+    expect(lastFrame()).toContain("Next step");
+    expect(lastFrame()).toContain("Press enter to compare prompts/support.md with HEAD.");
+    // 6 cases, 1 of them a conversation that claude-code skips
+    expect(lastFrame()).toContain("Your 5 test cases run through the old and new prompt (10 calls).");
+    unmount();
+    const clean = await start({ promptFiles: async () => [{ path: "prompts/support.md", changed: false }] });
+    expect(clean.lastFrame()).toContain("Open prompts/support.md in your editor, change something, and save.");
+    clean.unmount();
+  });
+
+  it("? shows how it works, and any key goes back", async () => {
+    const { lastFrame, stdin, unmount } = await start();
+    stdin.write("?");
+    await tick();
+    expect(lastFrame()).toContain("How promptdiff works");
+    expect(lastFrame()).toContain("NOISE    the answer is worded differently");
+    stdin.write("x");
+    await tick();
+    expect(lastFrame()).toContain("Next step");
+    unmount();
+});
 });

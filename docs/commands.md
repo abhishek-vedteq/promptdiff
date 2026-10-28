@@ -8,6 +8,8 @@ With no file, in a terminal, opens the [interactive app](./interactive.md).
 
 Compares `<file>` at a git ref against the working copy. `run` is the default command, so `promptdiff <file>` and `promptdiff run <file>` do the same thing.
 
+`<file>` is a prompt file (e.g. `prompts/support.md`), or a constant in a code file: `src/prompts/email.prompt.ts#EMAIL_SYSTEM_PROMPT`, `app/prompts.py#SYSTEM_PROMPT`, or `app/prompts.py#Prompts.SUPPORT`. See [Prompts in code](./prompts-in-code.md).
+
 | Flag                           | Description                                                                 | Default                  |
 | ------------------------------ | --------------------------------------------------------------------------- | ------------------------ |
 | `-b, --base <ref>`             | Git ref (branch, tag, or commit) for the old prompt.                        | `HEAD`                   |
@@ -45,6 +47,7 @@ promptdiff prompts/support.md --base v1.2 --head v1.3 --json > diff.json
 promptdiff prompts/support.md --base origin/main --fail-on-change --html report.html
 promptdiff prompts/support.md --base main --compare semantic --max-cost 1
 promptdiff prompts/support.md --base main --dry-run
+promptdiff src/prompts/email.prompt.ts#EMAIL_SYSTEM_PROMPT --base main
 ```
 
 ## `promptdiff login [provider]`

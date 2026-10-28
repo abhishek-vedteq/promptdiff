@@ -9,14 +9,15 @@ import { formatCost, formatPercentChange } from "../report/format.js";
 import { renderPlan } from "../report/plan.js";
 import { renderCase } from "../report/terminal.js";
 import { ACCENT, glyph, nest, spinnerFrames } from "../ui/theme.js";
-import type { Controller, ModelOption } from "./controller.js";
+import type { Controller, ModelOption, SetupStep } from "./controller.js";
 
 type View =
   | { name: "home" }
   | { name: "running"; file: string; done: number; total: number; logs: string[]; started: number }
   | { name: "results"; index: number; scroll: number }
   | { name: "model"; options: ModelOption[]; index: number; typing?: string }
-  | { name: "base"; value: string };
+  | { name: "base"; value: string }
+  | { name: "help"; back: View };
 
 interface Message {
   tone: "info" | "success" | "error";
@@ -46,6 +47,12 @@ const RUN_CHOICES = [1, 3, 5];
 const home = os.homedir();
 const tilde = (p: string) => (home && p.startsWith(home) ? `~${p.slice(home.length)}` : p);
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s);
+/** Shortens from the left, keeping the end (the file name) visible. */
+const clipStart = (s: string, n: number) => (s.length > n ? `…${s.slice(s.length - n + 1)}` : s);
+/** "file.ts#NAME" shows as NAME; plain files show their path. */
+const displayName = (spec: string) => (spec.includes("#") ? spec.slice(spec.lastIndexOf("#") + 1) : spec);
+/** Where a prompt in code lives (shown dim next to its name). */
+const location = (spec: string) => (spec.includes("#") ? spec.slice(0, spec.lastIndexOf("#")) : "");
 
 function errorMessage(err: unknown): Message {
   if (err instanceof PromptdiffError) return { tone: "error", lines: [err.message, ...(err.hint ? err.hint.split("\n") : [])] };
@@ -79,6 +86,73 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function MessageBox({ message }: { message: Message }) {
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderTop={false}
+      borderRight={false}
+      borderBottom={false}
+      borderColor={message.tone === "error" ? "red" : message.tone === "success" ? "green" : ACCENT}
+      paddingLeft={1}
+    >
+      {message.lines.map((l, i) => (
+        <Text key={i} dimColor={i > 0 && message.tone === "error"}>
+          {l}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
+/** Tells the user exactly what to do next, based on where they are. */
+function NextStep({ controller: c, file }: { controller: Controller; file?: string }) {
+  const runs = c.settings.runs;
+  // Installed CLIs skip conversation cases, so don't count them.
+  const viaCli = !!c.settings.model && /^(claude-code|codex):/.test(c.settings.model);
+  const info = c.casesFor(file);
+  const cases = (info?.count ?? 0) - (viaCli ? (info?.conversations ?? 0) : 0);
+  const calls = cases * runs * 2;
+  const changed = c.prompts.find((p) => p.path === file)?.changed;
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor={ACCENT} paddingX={1}>
+      <Text bold color={ACCENT}>
+        Next step
+      </Text>
+      {changed && info?.error ? (
+        <>
+          <Text>This prompt has no test cases yet ({info.file}).</Text>
+          <Text dimColor>Create {info.file} with one JSON object per line, e.g. {'{"input": "a message your users send"}'}, then press enter.</Text>
+        </>
+      ) : changed ? (
+        <>
+          <Text>
+            Press <Text bold color={ACCENT}>enter</Text> to compare {displayName(file!)} with {c.settings.base}.
+          </Text>
+          <Text dimColor>
+            Your {cases} test case{cases === 1 ? "" : "s"} run through the old and new prompt ({calls} call{calls === 1 ? "" : "s"}{runs > 1 ? `, ${runs} runs each` : ""}).
+          </Text>
+        </>
+      ) : c.changedCount > 0 ? (
+        <Text>
+          Select a changed prompt (<Text color="yellow">{glyph.bullet}</Text>) with ↑↓, then press <Text bold color={ACCENT}>enter</Text>.
+        </Text>
+      ) : (
+        <>
+          <Text>
+            {file && location(file)
+              ? `Open ${location(file)} in your editor, change ${displayName(file)}, and save.`
+              : `Open ${file ?? "a prompt file"} in your editor, change something, and save.`}
+          </Text>
+          <Text dimColor>It shows up here as changed within a few seconds. Then press enter to compare.</Text>
+          <Text dimColor>Or press b to compare with an older version from git instead.</Text>
+        </>
+      )}
+    </Box>
+  );
+}
+
 export function App({ controller: c, login }: AppProps) {
   const { exit, suspendTerminal } = useApp();
   const { stdout } = useStdout();
@@ -87,6 +161,7 @@ export function App({ controller: c, login }: AppProps) {
 
   const [view, setView] = useState<View>({ name: "home" });
   const [selected, setSelected] = useState(0);
+  const [stepIndex, setStepIndex] = useState(() => Math.max(0, c.setupSteps().findIndex((st) => !st.done)));
   const [message, setMessage] = useState<Message | undefined>();
   const [question, setQuestion] = useState<Question | undefined>();
   const [frame, setFrame] = useState(0);
@@ -101,7 +176,11 @@ export function App({ controller: c, login }: AppProps) {
       const before = JSON.stringify([c.prompts, c.cases]);
       void c.refresh().then(
         () => {
-          if (JSON.stringify([c.prompts, c.cases]) !== before) setTick((t) => t + 1);
+          if (JSON.stringify([c.prompts, c.cases]) !== before) {
+          // Files changed, so the next step changed too: drop the old message to show it.
+          setMessage(undefined);
+          setTick((t) => t + 1);
+        }
         },
         () => {},
       );
@@ -181,6 +260,38 @@ export function App({ controller: c, login }: AppProps) {
     setView({ name: "home" });
   };
 
+  const fixStep = async (step: SetupStep) => {
+    if (step.done) return;
+    try {
+      if (step.id === "model" && !c.alternative) {
+        const options = await c.modelOptions();
+        if (options.some((o) => o.ready)) setView({ name: "model", options, index: 0 });
+        else {
+          await suspendTerminal(() => login());
+          await c.checkModel();
+        }
+        rerender();
+        return;
+      }
+      const done = await c.fixStep(step.id);
+      const steps = c.setupSteps();
+      const next = steps.findIndex((st) => !st.done);
+      if (next >= 0) {
+        setStepIndex(next);
+        setMessage({ tone: "success", lines: [done] });
+      } else {
+        const first = c.prompts[0]?.path ?? "your prompt file";
+        setSelected(0);
+        setMessage({
+          tone: "success",
+          lines: [done, `You're all set. Next: open ${first} in your editor, change something, and save. It will show up here as changed.`],
+        });
+      }
+    } catch (err) {
+      setMessage(errorMessage(err));
+    }
+  };
+
   useInput((input, key) => {
     if (question) {
       if (input === "y" || input === "Y") {
@@ -198,7 +309,16 @@ export function App({ controller: c, login }: AppProps) {
       return;
     }
 
+    if (input === "?" && (view.name === "home" || view.name === "results")) {
+      setView({ name: "help", back: view });
+      return;
+    }
+
     switch (view.name) {
+      case "help":
+        setView(view.back);
+        return;
+
       case "running":
         if (key.escape || input === "q") abort.current?.abort();
         return;
@@ -237,6 +357,21 @@ export function App({ controller: c, login }: AppProps) {
         return;
 
       case "home": {
+        if (!c.setupComplete) {
+          const steps = c.setupSteps();
+          if (input === "q") exit();
+          else if (key.upArrow) setStepIndex((i) => (i + steps.length - 1) % steps.length);
+          else if (key.downArrow) setStepIndex((i) => (i + 1) % steps.length);
+          else if (key.return) void fixStep(steps[stepIndex]!);
+          else if (input === "m") void openModelPicker();
+          else if (input === "l") {
+            void suspendTerminal(() => login()).then(async () => {
+              await c.checkModel();
+              rerender();
+            });
+          }
+          return;
+        }
         const n = c.prompts.length;
         if (input === "q") exit();
         else if ((key.upArrow || input === "k") && n) setSelected((i) => (i + n - 1) % n);
@@ -303,13 +438,63 @@ export function App({ controller: c, login }: AppProps) {
         <Text dimColor>{c.settings.model ? clip(c.settings.model, 34) : "no model"}</Text>
       </Box>
       <Text dimColor>{glyph.rule.repeat(Math.max(0, columns - 2))}</Text>
+      {(view.name === "home" || view.name === "help") && (
+        <Text dimColor>See how editing a prompt changes your model's answers, before you ship it. Press ? for help.</Text>
+      )}
     </Box>
   );
 
   let body: ReactNode = null;
   let keys: [string, string][] = [];
 
-  if (view.name === "home") {
+  if (view.name === "home" && !c.setupComplete) {
+    const steps = c.setupSteps();
+    const doneCount = steps.filter((st) => st.done).length;
+    const sel = steps[stepIndex];
+    keys = [["↑↓", "select step"], ["enter", sel && !sel.done ? "do this step" : "—"], ["m", "model"], ["l", "log in"], ["?", "help"], ["q", "quit"]];
+    body = (
+      <Box flexDirection="column" rowGap={1}>
+        <Text>
+          <Text bold>Let's get you set up</Text>
+          <Text dimColor>
+            {"  "}
+            {doneCount} of {steps.length} done
+          </Text>
+        </Text>
+        <Box flexDirection="column">
+          {steps.map((st, i) => {
+            const isSel = i === stepIndex;
+            return (
+              <Box key={st.id} flexDirection="column" marginBottom={i < steps.length - 1 ? 1 : 0}>
+                <Text>
+                  <Text color={ACCENT}>{isSel ? `${glyph.pointer} ` : "  "}</Text>
+                  {st.done ? <Text color="green">{glyph.ok}</Text> : <Text color="yellow">{glyph.hollow}</Text>}
+                  <Text bold={isSel} color={isSel ? ACCENT : undefined}>
+                    {" "}
+                    {i + 1}. {st.title}
+                  </Text>
+                </Text>
+                <Text dimColor wrap="wrap">
+                  {"     "}
+                  {st.detail}
+                </Text>
+                {isSel && !st.done && st.action && (
+                  <Text>
+                    {"     "}
+                    <Text color={ACCENT} bold>
+                      enter
+                    </Text>{" "}
+                    to {st.action}
+                  </Text>
+                )}
+              </Box>
+            );
+          })}
+        </Box>
+        {message && <MessageBox message={message} />}
+      </Box>
+    );
+  } else if (view.name === "home") {
     const ready = c.inRepo && c.prompts.length > 0;
     keys = ready
       ? [
@@ -323,15 +508,18 @@ export function App({ controller: c, login }: AppProps) {
           ...(c.report ? [["v", "last results"] as [string, string]] : []),
           ...(c.lastReport ? [["o", "open report"] as [string, string]] : []),
           ["l", "log in"],
+          ["?", "help"],
           ["q", "quit"],
         ]
       : [["m", "model"], ["l", "log in"], ["q", "quit"]];
     if (c.cases?.error) keys.splice(keys.length - 1, 0, ["i", "create sample files"]);
-    const listHeight = Math.max(3, rows - 18);
+    // Leave room for the header, the details rows, the next-step box, and the key bar.
+    const listHeight = Math.max(3, rows - 24);
     const start = Math.max(0, Math.min(selected - Math.floor(listHeight / 2), c.prompts.length - listHeight));
     const visible = c.prompts.slice(start, start + listHeight);
-    const nameWidth = Math.min(Math.max(10, ...c.prompts.map((p) => p.path.length)) + 2, columns - 30);
+    const nameWidth = Math.min(Math.max(10, ...c.prompts.map((p) => displayName(p.path).length)), Math.floor(columns * 0.5));
     const viaCli = !!c.settings.model && /^(claude-code|codex):/.test(c.settings.model);
+    const currentCases = c.casesFor(current?.path);
 
     body = (
       <Box flexDirection="column" rowGap={1}>
@@ -359,26 +547,38 @@ export function App({ controller: c, login }: AppProps) {
             </Text>
             {visible.map((p, i) => {
               const isSel = start + i === selected;
+              const name = displayName(p.path);
+              const where = location(p.path);
+              const status = p.error ? "can't read" : p.changed ? `+${p.added ?? "?"} −${p.removed ?? "?"}` : "unchanged";
               return (
-                <Text key={p.path}>
+                <Text key={p.path} wrap="truncate-end">
                   <Text color={ACCENT}>{isSel ? `${glyph.pointer} ` : "  "}</Text>
                   <Text color={p.changed ? "yellow" : undefined} dimColor={!p.changed}>
                     {p.changed ? glyph.bullet : glyph.hollow}{" "}
                   </Text>
-                  <Text bold={isSel} color={isSel ? ACCENT : undefined}>
-                    {clip(p.path, nameWidth - 2).padEnd(nameWidth)}
-                  </Text>
-                  {p.changed ? (
+                  {p.error ? (
+                    <Text color="red">{status.padEnd(11)}</Text>
+                  ) : p.changed ? (
                     <Text>
                       <Text color="green">+{p.added ?? "?"}</Text> <Text color="red">−{p.removed ?? "?"}</Text>
+                      {" ".repeat(Math.max(1, 11 - status.length))}
                     </Text>
                   ) : (
-                    <Text dimColor>unchanged</Text>
+                    <Text dimColor>{status.padEnd(11)}</Text>
                   )}
+                  <Text bold={isSel} color={isSel ? ACCENT : undefined}>
+                    {clip(name, nameWidth).padEnd(nameWidth)}
+                  </Text>
+                  {where ? <Text dimColor>  {clipStart(where, Math.max(10, columns - nameWidth - 22))}</Text> : null}
                 </Text>
               );
             })}
-            {c.prompts.length > listHeight && <Text dimColor>  {c.prompts.length} files, ↑↓ to scroll</Text>}
+            {c.prompts.length > listHeight && (
+              <Text dimColor>
+                {"  "}
+                {start + 1}–{Math.min(start + listHeight, c.prompts.length)} of {c.prompts.length} prompts, ↑↓ to scroll
+              </Text>
+            )}
           </Box>
         )}
 
@@ -389,15 +589,17 @@ export function App({ controller: c, login }: AppProps) {
             </Text>
           </Row>
           <Row label="Test cases">
-            {c.cases?.error ? (
-              <Text color="yellow">{c.cases.error}</Text>
+            {currentCases?.error ? (
+              <Text color="yellow" wrap="truncate-end">
+                {currentCases.error}
+              </Text>
             ) : (
               <Text>
-                {c.cases?.count} in {c.cases?.file}
-                {viaCli && c.cases?.conversations ? (
+                {currentCases?.count} in {clipStart(tilde(currentCases?.file ?? ""), Math.max(20, columns - 50))}
+                {viaCli && currentCases?.conversations ? (
                   <Text dimColor>
                     {" "}
-                    ({c.cases.conversations} conversation case{c.cases.conversations === 1 ? "" : "s"} skipped with this model)
+                    ({currentCases.conversations} conversation case{currentCases.conversations === 1 ? "" : "s"} skipped with this model)
                   </Text>
                 ) : null}
               </Text>
@@ -436,23 +638,7 @@ export function App({ controller: c, login }: AppProps) {
           </Row>
         </Box>
 
-        {message && (
-          <Box
-            flexDirection="column"
-            borderStyle="single"
-            borderTop={false}
-            borderRight={false}
-            borderBottom={false}
-            borderColor={message.tone === "error" ? "red" : message.tone === "success" ? "green" : ACCENT}
-            paddingLeft={1}
-          >
-            {message.lines.map((l, i) => (
-              <Text key={i} dimColor={i > 0 && message.tone !== "info"}>
-                {l}
-              </Text>
-            ))}
-          </Box>
-        )}
+        {message ? <MessageBox message={message} /> : <NextStep controller={c} file={current?.path} />}
       </Box>
     );
   } else if (view.name === "running") {
@@ -463,7 +649,7 @@ export function App({ controller: c, login }: AppProps) {
     body = (
       <Box flexDirection="column" rowGap={1}>
         <Text>
-          Comparing <Text bold>{view.file}</Text>
+          Comparing <Text bold>{displayName(view.file)}</Text>
           <Text dimColor>
             {"  "}
             {c.settings.base} {glyph.arrow} working copy {glyph.sep} {c.settings.model}
@@ -501,12 +687,12 @@ export function App({ controller: c, login }: AppProps) {
       </Box>
     );
   } else if (view.name === "results" && c.report) {
-    keys = [["↑↓", "case"], ["j k", "scroll"], ["o", "open full report"], ["c", "compare again"], ["esc", "back"]];
+    keys = [["↑↓", "case"], ["j k", "scroll"], ["o", "open full report"], ["c", "compare again"], ["?", "help"], ["esc", "back"]];
     const report = c.report;
     const s = report.summary;
     const listWidth = Math.min(34, Math.floor(columns / 3));
     const paneWidth = columns - listWidth - 5;
-    const paneHeight = Math.max(5, rows - 10);
+    const paneHeight = Math.max(5, rows - 11);
     const cr = report.cases[Math.min(view.index, report.cases.length - 1)];
     const gutter = nest([""], new Chalk({ level: c.deps.colorLevel }))[0]!;
     // The list already names the case, so the pane shows the input, then the details without their gutter.
@@ -552,6 +738,10 @@ export function App({ controller: c, login }: AppProps) {
           output tokens {delta(s.base.outputTokens, s.head.outputTokens)} {glyph.sep} latency {delta(s.base.avgLatencyMs, s.head.avgLatencyMs)} {glyph.sep} cost{" "}
           {s.totalCost !== undefined ? formatCost(s.totalCost) : "n/a"}
           {s.checks ? ` ${glyph.sep} checks ${s.checks.head.passed}/${s.checks.head.total}${s.checks.regressions ? `, ${s.checks.regressions} regressed` : ""}` : ""}
+        </Text>
+        <Text dimColor>
+          <Text color="yellow">CHANGED</Text> answer changed {glyph.sep} <Text color="cyan">NOISE</Text> only reworded, like a rerun {glyph.sep}{" "}
+          <Text color="green">SAME</Text> identical
         </Text>
         <Box marginTop={1}>
           <Box flexDirection="column" width={listWidth} flexShrink={0}>
@@ -624,6 +814,46 @@ export function App({ controller: c, login }: AppProps) {
           </Box>
         )}
         <Text dimColor>Not set up yet? Press esc, then l to log in.</Text>
+      </Box>
+    );
+  } else if (view.name === "help") {
+    keys = [["any key", "back"]];
+    body = (
+      <Box flexDirection="column" rowGap={1}>
+        <Text bold>How promptdiff works</Text>
+        <Box flexDirection="column">
+          <Text>
+            <Text color={ACCENT}>1.</Text> Your <Text bold>prompt</Text> (the system prompt your app sends) lives in a file in git, e.g. prompts/support.md.
+          </Text>
+          <Text>
+            <Text color={ACCENT}>2.</Text> Your <Text bold>test cases</Text> are example user messages, one per line in cases.jsonl.
+          </Text>
+          <Text>
+            <Text color={ACCENT}>3.</Text> You edit the prompt. promptdiff sends every test case to the model twice: with the old prompt (from git) and with your edit.
+          </Text>
+          <Text>
+            <Text color={ACCENT}>4.</Text> You see, case by case, how the answers changed, and what it did to length, speed, and cost.
+          </Text>
+        </Box>
+        <Box flexDirection="column">
+          <Text bold>What the results mean</Text>
+          <Text>
+            <Text color="yellow">CHANGED</Text>  the answer is different in a way that matters
+          </Text>
+          <Text>
+            <Text color="cyan">NOISE  </Text>  the answer is worded differently, but no more than re-running the same prompt would
+          </Text>
+          <Text>
+            <Text color="green">SAME   </Text>  the answer didn't change
+          </Text>
+        </Box>
+        <Box flexDirection="column">
+          <Text bold>Good to know</Text>
+          <Text dimColor>• Results are saved, so comparing the same thing again is instant and free.</Text>
+          <Text dimColor>• Press r for more runs per case (tells real changes from randomness), s to compare by meaning.</Text>
+          <Text dimColor>• To compare against another branch or an older commit, press b.</Text>
+          <Text dimColor>• Full documentation: docs/ in the promptdiff repository.</Text>
+        </Box>
       </Box>
     );
   } else if (view.name === "base") {

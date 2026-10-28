@@ -17,6 +17,10 @@ compare: words                     # words (free) or semantic (LLM judge)
 judge: anthropic:claude-haiku-5-5  # model for llm-rubric and semantic comparison (default: model)
 maxCost: 2.50                      # USD budget per run
 confirmAbove: 1.00                 # ask before runs estimated above this (interactive terminals only)
+prompts:                           # where your prompts live (see docs/prompts-in-code.md)
+  - src/**/*.prompt.ts
+  - path: src/email/**/*.prompt.ts
+    cases: tests/email.jsonl         # test cases for just these prompts
 vars:                              # default template variables
   company: Acme
 assert:                            # checks applied to every case
@@ -38,6 +42,7 @@ assert:                            # checks applied to every case
 | `judge`           | string  | `model`        | `<provider>:<model-id>` for the judge.               |
 | `maxCost`         | number  | (none)         | Budget in USD. See [Cost controls](./cost-controls.md). |
 | `confirmAbove`    | number  | `1`            | Ask before runs estimated above this many USD.       |
+| `prompts`         | array   | auto-detected  | Globs (or `file.ts#NAME`) for the prompts to list. An entry can be `{path, cases}` to give those prompts their own test cases. See [Prompts in code](./prompts-in-code.md). |
 | `vars`            | object  | (none)         | Default template variables. See [Test cases](./test-cases.md#prompt-templates). |
 | `assert`          | array   | (none)         | Checks applied to every case. See [Assertions](./assertions.md). |
 

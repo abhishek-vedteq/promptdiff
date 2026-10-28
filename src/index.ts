@@ -11,3 +11,5 @@ export { MockProvider } from "./providers/mock.js";
 export type { Provider, ProviderDefinition, GenerateRequest, GenerateResponse } from "./providers/types.js";
 export { runDiff, type RunnerOptions } from "./runner.js";
 export type { DiffReport, CaseResult, RunOutput, VersionTotals } from "./types.js";
+export { extractPrompt, listPromptExports, PromptEvaluator } from "./code-prompts.js";
+export { discoverPrompts } from "./prompts.js";

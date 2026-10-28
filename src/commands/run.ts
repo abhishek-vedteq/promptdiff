@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import chalk, { chalkStderr } from "chalk";
@@ -8,13 +8,14 @@ import { caseInputKey, loadCases, validateAssertionSchemas, type TestCase } from
 import { resolveCredential, type ResolvedCredential } from "../auth.js";
 import { missingKeyError, readUserConfig, redactSecrets } from "../config/keys.js";
 import { PROJECT_CONFIG_FILE, loadProjectConfig } from "../config/project.js";
-import { resolveRunOptions, type CliRunOptions, type ResolvedRunOptions } from "../config/resolve.js";
+import { casesForPrompt, resolveRunOptions, type CliRunOptions, type ResolvedRunOptions } from "../config/resolve.js";
 import { PromptdiffError } from "../errors.js";
 import { detectDefaultModel, type DetectedModel } from "../detect.js";
 import { Budget, planRun, type RunPlan } from "../estimate.js";
 import { findExecutable } from "../exec.js";
 import { Judge } from "../judge.js";
-import { getRepoRoot, readFileAtRef } from "../git.js";
+import { getRepoRoot } from "../git.js";
+import { loadPrompt } from "../prompt-source.js";
 import { resolveGitHubContext, upsertComment } from "../github.js";
 import { PROJECT_PRICING_FILE, loadBuiltinPricing, loadPricingFile } from "../pricing.js";
 import { getProviderDefinition, parseModelSpec } from "../providers/registry.js";
@@ -188,6 +189,11 @@ export async function runCommand(file: string, cli: CliRunOptions, partialDeps: 
     }
   }
   const opts = resolveRunOptions(cli, project.config, project.file, cwd, detected?.model);
+  // A `prompts:` entry can name its own test cases.
+  if (!cli.cases) {
+    const own = casesForPrompt(project.config, project.file, cwd, file);
+    if (own) opts.casesFile = own;
+  }
   // Fail fast on GitHub setup problems, before spending anything.
   const github = opts.githubComment ? await resolveGitHubContext(deps.env, opts.pr) : undefined;
   const spec = parseModelSpec(opts.model);
@@ -212,22 +218,13 @@ export async function runCommand(file: string, cli: CliRunOptions, partialDeps: 
   const repoRoot = await getRepoRoot(cwd);
   const baseRef = opts.base;
   const headRef = opts.head ?? "working copy";
-  const basePrompt = await readFileAtRef(file, baseRef, cwd);
-  let headPrompt: string;
-  if (opts.head) {
-    headPrompt = await readFileAtRef(file, opts.head, cwd);
-  } else {
-    try {
-      headPrompt = await readFile(path.resolve(cwd, file), "utf8");
-    } catch {
-      throw new PromptdiffError(`File not found in the working copy: ${file}`, {
-        hint: "Check the path, or pass --head <ref> to compare two committed versions.",
-      });
-    }
-  }
+  // A plain file, or an exported constant in a code file ("file.ts#NAME").
+  const basePrompt = (await loadPrompt(file, { ref: baseRef }, cwd)).text;
+  const headPrompt = (await loadPrompt(file, opts.head ? { ref: opts.head } : "working", cwd)).text;
 
   validateAssertionSchemas(opts.assertions, project.file ? path.relative(cwd, project.file) : "config");
-  const casesLabel = path.relative(cwd, opts.casesFile) || opts.casesFile;
+  const relCases = path.relative(cwd, opts.casesFile);
+  const casesLabel = !relCases || relCases.startsWith("..") ? opts.casesFile : relCases;
   const cases = checkCapabilities(def.id, await loadCases(opts.casesFile, casesLabel), opts, deps.stderr);
   const rubricCount = (tc: TestCase) => [...opts.assertions, ...tc.assert].filter((a) => a.type === "llm-rubric").length;
   const needsJudge = opts.compare === "semantic" || cases.some((tc) => rubricCount(tc) > 0);

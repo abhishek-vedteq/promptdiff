@@ -1,9 +1,11 @@
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import chalk from "chalk";
 import { render } from "ink";
 import { cliLoginCheckers, resolveCredential } from "../auth.js";
 import { loadCases } from "../cases.js";
-import { initCommand } from "../commands/init.js";
+import { SAMPLE_PROMPT, initCommand } from "../commands/init.js";
 import { loginCommand } from "../commands/login.js";
 import { runCommand } from "../commands/run.js";
 import { gatherStatus } from "../commands/status.js";
@@ -12,7 +14,7 @@ import type { CliRunOptions } from "../config/resolve.js";
 import { detectDefaultModel } from "../detect.js";
 import { PromptdiffError } from "../errors.js";
 import { getRepoRoot, git } from "../git.js";
-import { promptFilesWithStatus } from "../prompts.js";
+import { discoverPrompts } from "../prompts.js";
 import { getProviderDefinition, parseModelSpec } from "../providers/registry.js";
 import { App } from "./App.js";
 import { Controller, type CasesInfo } from "./controller.js";
@@ -49,6 +51,29 @@ async function casesInfo(cwd: string, file: string): Promise<CasesInfo> {
   }
 }
 
+/** Writes prompts/support.md (unless it exists) and commits only that file. */
+async function createSamplePrompt(cwd: string): Promise<string> {
+  const rel = path.join("prompts", "support.md");
+  const file = path.join(cwd, rel);
+  if (!existsSync(file)) {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, SAMPLE_PROMPT);
+  }
+  await git(["add", "--", rel], cwd);
+  try {
+    await git(["commit", "-q", "-m", "Add sample prompt for promptdiff", "--", rel], cwd);
+  } catch (err) {
+    const stderr = (err as { stderr?: string }).stderr ?? "";
+    if (/user\.(name|email)|identity/i.test(stderr)) {
+      throw new PromptdiffError(`Created ${rel}, but git couldn't commit it: your git name and email aren't set.`, {
+        hint: 'Run: git config --global user.name "Your Name" && git config --global user.email you@example.com, then press enter again.',
+      });
+    }
+    throw new PromptdiffError(`Created ${rel}, but committing it failed: ${stderr.trim() || (err as Error).message}`);
+  }
+  return rel.split(path.sep).join("/");
+}
+
 /** Opens the interactive app (what `promptdiff` with no arguments does in a terminal). */
 export async function startInteractive(cli: CliRunOptions = {}): Promise<void> {
   const cwd = process.cwd();
@@ -65,9 +90,13 @@ export async function startInteractive(cli: CliRunOptions = {}): Promise<void> {
     modelProblem: (model) => modelProblem(model, env),
     isRepo: () => getRepoRoot(cwd).then(() => true, () => false),
     branch: () => git(["rev-parse", "--abbrev-ref", "HEAD"], cwd).then((r) => r.stdout.trim() || undefined, () => undefined),
-    promptFiles: (base) => promptFilesWithStatus(cwd, base),
+    promptFiles: (base, patterns, configDir) => discoverPrompts(cwd, base, patterns, configDir),
     cases: (file) => casesInfo(cwd, file),
-    init: (out) => initCommand({}, cwd, out),
+    init: (out, model) => initCommand({ model }, cwd, out),
+    gitInit: async () => {
+      await git(["init", "-q"], cwd);
+    },
+    createSamplePrompt: () => createSamplePrompt(cwd),
     openFile: openWithDefaultApp,
   });
 

@@ -2,7 +2,39 @@
 
 Run `promptdiff` with no arguments in a terminal to open the app. It takes over the terminal window (like `vim` or `htop`), and puts everything back when you quit.
 
-There are three screens. Every key you can press is always listed in the bar at the bottom.
+Every key you can press is always listed in the bar at the bottom, and **?** explains how promptdiff works.
+
+## First launch: setup
+
+If anything is missing, the app opens on a checklist instead:
+
+```
+ Let's get you set up  1 of 4 done
+ › ○ 1. A git repository
+      this folder isn't one yet. promptdiff gets the old version of a prompt from git.
+      enter to run `git init` here
+   ✓ 2. A model to run prompts
+      claude-code:default (found your Claude Code login)
+   ○ 3. Test cases
+      none yet. Test cases are example messages your users send, saved in cases.jsonl.
+   ○ 4. A prompt file, committed to git
+      none yet. A prompt file is your system prompt saved as .md or .txt, e.g. prompts/support.md.
+```
+
+Press **Enter** on a step to do it:
+
+| Step | What Enter does |
+| --- | --- |
+| A git repository | Runs `git init` in this folder |
+| A model | Switches to a model that's ready (e.g. your Claude Code login), or lets you choose or log in |
+| Test cases | Creates `cases.jsonl` with example cases, and `promptdiff.config.yaml` set to your model |
+| A prompt file | Creates `prompts/support.md` (a sample support-bot prompt) and commits just that file |
+
+When all four are done, you land on the prompts screen.
+
+## The screens
+
+There are three screens.
 
 ## 1. Prompts
 
@@ -24,7 +56,7 @@ There are three screens. Every key you can press is always listed in the bar at 
 ```
 
 - Changed prompt files (●) are listed first, with lines added and removed. Edits you save in your editor show up within a couple of seconds, without restarting.
-- If the model isn't set up (for example, no API key), it says so, and suggests one that's ready.
+- A **Next step** box always says what to do now: edit a prompt and save it, or press Enter to compare (with how many calls that makes).
 
 | Key | Action |
 | --- | --- |
@@ -37,7 +69,7 @@ There are three screens. Every key you can press is always listed in the bar at 
 | p | Show the number of calls and estimated cost, without running |
 | v / o | View the last results again, or open the full HTML report in your browser |
 | l | Log in: paste an API key, sign in with your browser, or use Claude Code / Codex |
-| i | Create sample `promptdiff.config.yaml` and `cases.jsonl` (shown when there are no test cases) |
+| ? | How promptdiff works, and what the results mean |
 | q | Quit |
 
 ## 2. Running

@@ -2,6 +2,7 @@
 
 - [Getting started](./getting-started.md): install, set up a key, run your first diff
 - [Logging in](./api-keys.md): API keys, browser login, using your Claude Code or Codex login, and environment variables
+- [Prompts in code](./prompts-in-code.md): comparing prompts stored as constants in TypeScript, JavaScript, or Python
 - [Test cases](./test-cases.md): the `cases.jsonl` format
 - [Assertions](./assertions.md): checks like `contains`, `is-json`, `max-words`, and `llm-rubric`
 - [LLM judge](./llm-judge.md): rubric grading and comparing outputs by meaning

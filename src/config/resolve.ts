@@ -1,4 +1,5 @@
 import path from "node:path";
+import picomatch from "picomatch";
 import type { Assertion } from "../assertions.js";
 import { PromptdiffError } from "../errors.js";
 import type { ProjectConfig } from "./project.js";
@@ -84,6 +85,40 @@ function parseNumber(name: string, value: string | undefined, opts: { int?: bool
     throw new PromptdiffError(`--${name} must be between ${opts.min} and ${opts.max}, got ${n}`);
   }
   return n;
+}
+
+export interface PromptPattern {
+  /** Glob (or "glob#NAME"), relative to the config file's directory. */
+  path: string;
+  cases?: string;
+}
+
+export function promptPatterns(project: ProjectConfig): PromptPattern[] {
+  return (project.prompts ?? []).map((p) => (typeof p === "string" ? { path: p } : p));
+}
+
+/** Splits "glob#NAME" into a matcher for the file and an optional export name. */
+export function compilePattern(pattern: string): { match: (file: string) => boolean; name?: string } {
+  const hash = pattern.lastIndexOf("#");
+  const glob = hash > 0 ? pattern.slice(0, hash) : pattern;
+  const name = hash > 0 ? pattern.slice(hash + 1) : undefined;
+  const isMatch = picomatch(glob.replace(/^\.\//, ""), { dot: true });
+  return { match: (file) => isMatch(file.split(path.sep).join("/").replace(/^\.\//, "")), name };
+}
+
+/** The test-case file for a prompt, if its `prompts:` entry names one. Absolute path. */
+export function casesForPrompt(project: ProjectConfig, projectFile: string | undefined, cwd: string, prompt: string): string | undefined {
+  const configDir = projectFile ? path.dirname(projectFile) : cwd;
+  const hash = prompt.lastIndexOf("#");
+  const file = hash > 0 ? prompt.slice(0, hash) : prompt;
+  const name = hash > 0 ? prompt.slice(hash + 1) : undefined;
+  const rel = path.relative(configDir, path.resolve(cwd, file));
+  for (const p of promptPatterns(project)) {
+    if (!p.cases) continue;
+    const { match, name: only } = compilePattern(p.path);
+    if (match(rel) && (!only || only === name)) return path.resolve(configDir, p.cases);
+  }
+  return undefined;
 }
 
 function parseCompare(value: string | undefined): "words" | "semantic" | undefined {
