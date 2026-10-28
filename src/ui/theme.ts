@@ -6,9 +6,14 @@ import chalk, { type ChalkInstance } from "chalk";
  * Red and green are reserved for removed and added text.
  */
 
-/** Terminals that can draw box-drawing characters and symbols (legacy Windows consoles can't). */
+/**
+ * Whether the terminal can draw symbols like ± and │ (legacy Windows consoles can't).
+ * Set PROMPTDIFF_UNICODE=1 or 0 to override the guess.
+ */
 export const unicode =
-  process.platform !== "win32" || !!process.env.WT_SESSION || process.env.TERM_PROGRAM === "vscode" || !!process.env.TERM?.includes("xterm");
+  process.env.PROMPTDIFF_UNICODE !== undefined
+    ? process.env.PROMPTDIFF_UNICODE !== "0"
+    : process.platform !== "win32" || !!process.env.WT_SESSION || process.env.TERM_PROGRAM === "vscode" || !!process.env.TERM?.includes("xterm");
 
 export const glyph = unicode
   ? { mark: "±", bullet: "●", hollow: "○", pointer: "›", gutter: "│", rule: "─", ok: "✓", fail: "✗", warn: "!", sep: "·", arrow: "→" }

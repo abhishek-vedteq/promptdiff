@@ -84,7 +84,7 @@ describe("Controller", () => {
     const progress: number[][] = [];
     const { report: r } = await c.compare("prompts/support.md", { progress: (d, t) => progress.push([d, t]), log: () => {}, confirm: async () => true, signal: new AbortController().signal });
     expect(deps.calls[0]).toMatchObject({ file: "prompts/support.md", cli: { model: "claude-code:default", runs: "3", compare: "semantic", base: "HEAD" } });
-    expect(deps.calls[0]!.cli.html).toMatch(/\.promptdiff\/reports\/last\.html$/);
+    expect(deps.calls[0]!.cli.html).toMatch(/[\\/]\.promptdiff[\\/]reports[\\/]last\.html$/);
     expect(progress).toEqual([[1, 2]]);
     expect(r?.summary.changed).toBe(1);
     expect(c.lastReport).toBeDefined();

@@ -77,3 +77,7 @@ Changes made in the app (model, base, runs, compare mode) last until you quit. T
 ## Scripts and CI
 
 The app only opens when you run `promptdiff` with no file in a terminal. `promptdiff <file> [flags]` runs once and prints a report, exactly as before.
+
+## Symbols look wrong?
+
+promptdiff draws symbols like `±` and `│` when your terminal supports them, and falls back to plain text (`+-`, `|`) on old Windows consoles. If it guesses wrong, set `PROMPTDIFF_UNICODE=1` (or `0`).
