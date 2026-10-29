@@ -135,7 +135,7 @@ export async function casesGenerateCommand(prompt: string, opts: CasesGenerateOp
     ? path.resolve(deps.cwd, opts.output)
     : (casesForPrompt(project.config, project.file, deps.cwd, prompt) ?? path.resolve(configDir, project.config.cases ?? "cases.jsonl"));
   const rel = path.relative(deps.cwd, target);
-  const label = !rel || rel.startsWith("..") ? target : rel;
+  const label = !rel || rel.startsWith("..") ? target : rel.split(path.sep).join("/");
   if (existsSync(target) && !opts.append && !opts.force) {
     throw new PromptdiffError(`${label} already exists.`, { hint: "Use --append to add to it, --force to replace it, or -o <file> to write somewhere else." });
   }
