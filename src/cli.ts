@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { chalkStderr } from "chalk";
 import { Command } from "commander";
+import { bisectCommand, type BisectOptions } from "./commands/bisect.js";
+import { casesGenerateCommand, type CasesGenerateOptions } from "./commands/cases.js";
 import { configList, configRemove, configSet } from "./commands/config.js";
 import { initCommand } from "./commands/init.js";
 import { loginCommand } from "./commands/login.js";
@@ -90,6 +92,35 @@ config
   .alias("rm")
   .description("delete a saved API key")
   .action(async (provider: string) => configRemove(provider));
+
+const cases = program.command("cases").description("work with test cases");
+cases
+  .command("generate <prompt>")
+  .description("have a model write realistic test cases for a prompt (file, or file.ts#NAME)")
+  .option("-n, --count <n>", "how many cases to write (default: 12)")
+  .option("-o, --output <file>", "where to write them (default: the prompt's test-case file, or cases.jsonl)")
+  .option("-m, --model <provider:model>", "model that writes the cases (default: your configured or detected model)")
+  .option("--with-checks", "also write a plain-English check (llm-rubric) for each case")
+  .option("--append", "add to an existing file")
+  .option("--force", "replace an existing file")
+  .option("--config <file>", "path to config file")
+  .action(async (prompt: string, opts: CasesGenerateOptions) => {
+    await casesGenerateCommand(prompt, opts);
+  });
+
+program
+  .command("bisect <prompt>")
+  .description("find the commit where a prompt's checks started failing (binary search over its history)")
+  .requiredOption("--good <ref>", "a version where the answers were still right")
+  .option("--bad <ref>", "a version where they're wrong (default: your working copy)")
+  .option("--case <id...>", "only use these test cases (default: all of them)")
+  .option("-m, --model <provider:model>", "model to run (default: your configured or detected model)")
+  .option("-c, --cases <file>", "test cases file")
+  .option("--no-cache", "don't reuse saved results")
+  .option("--config <file>", "path to config file")
+  .action(async (prompt: string, opts: BisectOptions) => {
+    await bisectCommand(prompt, opts);
+  });
 
 program
   .command("init")

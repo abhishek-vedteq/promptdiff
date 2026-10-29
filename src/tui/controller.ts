@@ -6,6 +6,7 @@ import { loadProjectConfig, type ProjectConfig } from "../config/project.js";
 import { casesForPrompt, promptPatterns, type CliRunOptions } from "../config/resolve.js";
 import type { DetectedModel } from "../detect.js";
 import type { RunPlan } from "../estimate.js";
+import { snapshotPath, writeSnapshot } from "../snapshots.js";
 import type { DiffReport } from "../types.js";
 
 export interface PromptFile {
@@ -62,6 +63,8 @@ export interface ControllerDeps {
   cases: (file: string) => Promise<CasesInfo>;
   init: (out: { write(s: string): unknown }, model?: string) => Promise<void>;
   openFile: (file: string) => void;
+  /** Writes generated test cases for a prompt (with the given model). Returns the file written. */
+  generateCases: (prompt: string, model: string, out: { write(s: string): unknown }) => Promise<string>;
   /** Runs `git init` in cwd. */
   gitInit: () => Promise<void>;
   /** Writes a sample prompt file and commits just that file. Returns its path. */
@@ -86,6 +89,8 @@ export interface CompareHooks {
   confirm: (question: string) => Promise<boolean>;
   signal: AbortSignal;
 }
+
+const displayPrompt = (spec: string) => (spec.includes("#") ? spec.slice(spec.lastIndexOf("#") + 1) : spec);
 
 const DEFAULT_MODEL_FOR: Record<string, string> = {
   anthropic: "anthropic:claude-opus-5-5",
@@ -229,7 +234,9 @@ export class Controller {
             : "none yet. Test cases are example messages your users send, saved in cases.jsonl."
           : `${this.cases?.count} in ${this.cases?.file}`,
         action: this.prompts.length
-          ? "create cases.jsonl with placeholder examples, to replace with real messages from your app"
+          ? this.modelProblem
+            ? "create cases.jsonl with placeholder examples, to replace with real messages from your app"
+            : `have ${this.settings.model} write test cases from your prompt (${displayPrompt(this.prompts[0]!.path)})`
           : "create cases.jsonl with 5 examples (and promptdiff.config.yaml)",
       },
       {
@@ -263,6 +270,7 @@ export class Controller {
         await this.checkModel();
         return `Using ${this.settings.model}.`;
       case "cases": {
+        if (this.prompts.length && !this.modelProblem && this.settings.model) return this.generateFor(this.prompts[0]!.path);
         let out = "";
         await this.deps.init({ write: (t: string) => (out += t) }, this.modelProblem ? undefined : this.settings.model);
         await this.refresh();
@@ -274,6 +282,25 @@ export class Controller {
         return `Created and committed ${file}.`;
       }
     }
+  }
+
+  /** Has the model write test cases for a prompt, into that prompt's test-case file. */
+  async generateFor(prompt: string): Promise<string> {
+    if (!this.settings.model || this.modelProblem) throw new Error(`Set up a model first (${this.modelProblem ?? "none chosen"}).`);
+    let out = "";
+    const file = await this.deps.generateCases(prompt, this.settings.model, { write: (t: string) => (out += t) });
+    await this.refresh();
+    const count = out.match(/Wrote (\d+)/)?.[1] ?? "";
+    return `Wrote ${count} test cases to ${path.relative(this.deps.cwd, file) || file}. Review and edit them so they match real use.`;
+  }
+
+  /** Saves the last results' new outputs as the approved ones. */
+  async approve(): Promise<string> {
+    if (!this.report) throw new Error("Nothing to approve yet.");
+    const dir = this.projectFile ? path.dirname(this.projectFile) : this.deps.cwd;
+    const file = snapshotPath(dir, this.report.meta.file);
+    const n = await writeSnapshot(file, this.report);
+    return `Approved ${n} case${n === 1 ? "" : "s"}: saved to ${path.relative(this.deps.cwd, file)}. Commit it, then compare with "approved" (press b) to check for changes or model drift.`;
   }
 
   get changedCount(): number {
@@ -308,6 +335,8 @@ export class Controller {
       compare: s.compare,
       ...(s.judge ? { judge: s.judge } : {}),
       ...(dryRun ? { dryRun: true } : {}),
+      // "approved" means: compare with the approved outputs (snapshot), not a git ref.
+      ...(s.base === "approved" ? { snapshot: true, base: "HEAD" } : {}),
     };
     if (!dryRun) {
       const dir = path.join(this.deps.cwd, ".promptdiff", "reports");

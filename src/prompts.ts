@@ -6,6 +6,7 @@ import { extractPrompt, isCodeFile, listPromptExports } from "./code-prompts.js"
 import { compilePattern } from "./config/resolve.js";
 import { git } from "./git.js";
 import { fileLister, refReader, workingReader } from "./prompt-source.js";
+import { extractDataPrompt, isDataFile, listDataPrompts } from "./data-prompts.js";
 import { extractPythonPrompts, isPythonFile, listPythonPrompts, type PythonExtraction } from "./python-prompts.js";
 
 const PROMPT_EXTENSIONS = new Set([".md", ".mdx", ".txt", ".prompt", ".prompty", ".jinja", ".jinja2", ".j2", ".hbs", ".mustache", ".tmpl", ".tpl", ".xml"]);
@@ -111,7 +112,7 @@ export async function discoverPrompts(
   }
   const textStatus = new Map((await promptFilesWithStatus(cwd, base)).map((f) => [f.path, f]));
 
-  type Candidate = { file: string; names?: string[]; python?: boolean; error?: string };
+  type Candidate = { file: string; names?: string[]; python?: boolean; data?: boolean; error?: string };
   const candidates: Candidate[] = [];
   const readWorking = (f: string) => readFile(path.join(cwd, f), "utf8").catch(() => undefined);
   const exportsOf = async (f: string, only?: string) => {
@@ -126,6 +127,18 @@ export async function discoverPrompts(
   };
   /** Adds a code file: TS/JS names are listed now; Python names in one batch afterwards. */
   const addCode = async (f: string, only?: string) => {
+    if (isDataFile(f)) {
+      let names = only ? [only] : [];
+      if (!only) {
+        try {
+          names = listDataPrompts(f, (await readWorking(f)) ?? "");
+        } catch {
+          names = [];
+        }
+      }
+      if (names.length) candidates.push({ file: f, names, data: true });
+      return;
+    }
     if (isPythonFile(f)) {
       candidates.push({ file: f, python: true, names: only ? [only] : undefined });
       return;
@@ -140,7 +153,7 @@ export async function discoverPrompts(
       const rel = path.relative(configDir, path.join(cwd, f));
       for (const pat of compiled) {
         if (!pat.match(rel)) continue;
-        if (isCodeFile(f) || isPythonFile(f)) await addCode(f, pat.name);
+        if (isCodeFile(f) || isPythonFile(f) || isDataFile(f)) await addCode(f, pat.name);
         else candidates.push({ file: f });
         break;
       }
@@ -149,7 +162,7 @@ export async function discoverPrompts(
     for (const f of tracked) {
       if (!/prompt/i.test(f) || NOT_SOURCE.test(f) || HIDDEN_DIR.test(f) || /(^|\/)test_[^/]*\.py$/.test(f)) continue;
       if (isPromptLike(f)) candidates.push({ file: f });
-      else if ((isCodeFile(f) && !/\.(tsx|jsx)$/.test(f)) || isPythonFile(f)) await addCode(f);
+      else if ((isCodeFile(f) && !/\.(tsx|jsx)$/.test(f)) || isPythonFile(f) || (isDataFile(f) && !/(^|\/)(package|tsconfig|package-lock|composer)\.json$/.test(f))) await addCode(f);
     }
     if (candidates.length === 0) {
       for (const f of tracked) if (isPromptLike(f) && !NOT_SOURCE.test(f) && !HIDDEN_DIR.test(f)) candidates.push({ file: f });
@@ -223,6 +236,26 @@ export async function discoverPrompts(
     const repoPath = repoPathOf(cand.file);
     for (const name of cand.names) {
       const spec = `${cand.file}#${name}`;
+      if (cand.data) {
+        try {
+          const now = extractDataPrompt(cand.file, (await readWorking(cand.file)) ?? "", name);
+          if (!baseExists || !changedRepoPaths.has(repoPath)) {
+            out.push({ path: spec, changed: false });
+            continue;
+          }
+          const baseSource = await baseRead(repoPath);
+          let before: string | undefined;
+          try {
+            before = baseSource === undefined ? undefined : extractDataPrompt(cand.file, baseSource, name);
+          } catch {
+            before = undefined;
+          }
+          out.push(before === now ? { path: spec, changed: false } : { path: spec, changed: true, ...stats(before, now) });
+        } catch (err) {
+          out.push({ path: spec, changed: false, error: (err as Error).message });
+        }
+        continue;
+      }
       if (cand.python) {
         const now = pyNow.get(pyKey(repoPath, name));
         if (!now || now.text === undefined) {

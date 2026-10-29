@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { extractPrompt, isCodeFile, listPromptExports, type SourceReader } from "./code-prompts.js";
 import { PromptdiffError } from "./errors.js";
+import { DATA_PATH, extractDataPrompt, isDataFile, listDataPrompts } from "./data-prompts.js";
 import { extractPythonPrompt, isPythonFile, listPythonPrompts } from "./python-prompts.js";
 import { assertRefExists, getRepoRoot, git, readFileAtRef, toRepoPath } from "./git.js";
 
@@ -20,8 +21,8 @@ export function parsePromptSpec(spec: string): PromptSpec {
   if (hash > 0 && hash < spec.length - 1) {
     const file = spec.slice(0, hash);
     const name = spec.slice(hash + 1);
-    // NAME, or Class.NAME for attributes of a Python class
-    const valid = isPythonFile(file) ? /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)?$/ : /^[A-Za-z_$][\w$]*$/;
+    // NAME; Class.NAME for attributes of a Python class; a key path for YAML/JSON
+    const valid = isDataFile(file) ? DATA_PATH : isPythonFile(file) ? /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)?$/ : /^[A-Za-z_$][\w$]*$/;
     if (valid.test(name)) return { file, name };
   }
   return { file: spec };
@@ -74,7 +75,7 @@ export async function loadPrompt(spec: string, version: PromptVersion, cwd: stri
   const where = version === "working" ? "the working copy" : `"${version.ref}"`;
 
   if (!name) {
-    if (isCodeFile(file) || isPythonFile(file)) await rejectWholeCodeFile(file, cwd);
+    if (isCodeFile(file) || isPythonFile(file) || isDataFile(file)) await rejectWholeCodeFile(file, cwd);
     if (version === "working") {
       try {
         return { text: await readFile(path.resolve(cwd, file), "utf8"), files: [file] };
@@ -97,6 +98,7 @@ export async function loadPrompt(spec: string, version: PromptVersion, cwd: stri
     });
   }
   try {
+    if (isDataFile(repoPath)) return { text: extractDataPrompt(repoPath, (await read(repoPath))!, name), files: [repoPath] };
     if (isPythonFile(repoPath)) return await extractPythonPrompt(repoRoot, version === "working" ? undefined : version.ref, repoPath, name);
     return await extractPrompt(repoPath, name, read, { listFiles: fileLister(repoRoot, version) });
   } catch (err) {
@@ -112,11 +114,15 @@ async function rejectWholeCodeFile(file: string, cwd: string): Promise<never> {
   let names: string[] = [];
   try {
     const source = await readFile(path.resolve(cwd, file), "utf8");
-    names = isPythonFile(file) ? ((await listPythonPrompts([{ path: file, source }])).get(file) ?? []) : listPromptExports(file, source);
+    names = isDataFile(file)
+      ? listDataPrompts(file, source)
+      : isPythonFile(file)
+        ? ((await listPythonPrompts([{ path: file, source }])).get(file) ?? [])
+        : listPromptExports(file, source);
   } catch {
     // fall through with no suggestions
   }
-  throw new PromptdiffError(`${file} is a code file. Which prompt in it should be compared?`, {
+  throw new PromptdiffError(`${file} ${isDataFile(file) ? "holds several values" : "is a code file"}. Which prompt in it should be compared?`, {
     hint: names.length
       ? `Add the name of the exported constant after #, e.g.\n${names.slice(0, 6).map((n) => `  ${file}#${n}`).join("\n")}`
       : `Add the name of the variable holding the prompt after #, e.g. ${file}#SYSTEM_PROMPT`,

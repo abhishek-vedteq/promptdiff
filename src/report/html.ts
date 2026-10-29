@@ -1,5 +1,6 @@
 import type { CaseStatus } from "../analysis.js";
 import type { CaseResult, DiffReport, RunOutput } from "../types.js";
+import { diffJson, parseJsonOutput, showJson } from "../json-diff.js";
 import { leftSide, rightSide, wordDiff, type Segment } from "./diff.js";
 import { formatCost, formatInt, formatMs, formatPercentChange } from "./format.js";
 
@@ -38,6 +39,20 @@ function runsTable(label: string, outputs: RunOutput[]): string {
         `<pre>${escapeHtml(o.error ? `ERROR: ${o.error}` : o.text)}</pre></div>`,
     )
     .join("");
+}
+
+/** A table of changed JSON fields, when both outputs are JSON. */
+function jsonHtml(base: string, head: string): string {
+  const a = parseJsonOutput(base);
+  const b = parseJsonOutput(head);
+  if (a === undefined || b === undefined) return "";
+  const changes = diffJson(a, b);
+  if (changes.length === 0) return `<div class="metrics">JSON is the same (only formatting or key order differs).</div>`;
+  const rows = changes
+    .slice(0, 200)
+    .map((ch) => `<tr><td class="${ch.kind}">${ch.kind}</td><td><code>${escapeHtml(ch.path)}</code></td><td><del>${ch.before === undefined ? "" : escapeHtml(showJson(ch.before, 300))}</del></td><td><ins>${ch.after === undefined ? "" : escapeHtml(showJson(ch.after, 300))}</ins></td></tr>`)
+    .join("");
+  return `<div class="label">JSON fields changed (${changes.length})</div><table class="json"><tr><th></th><th>field</th><th>before</th><th>after</th></tr>${rows}</table>`;
 }
 
 function inputHtml(cr: CaseResult): string {
@@ -84,6 +99,7 @@ function caseHtml(cr: CaseResult, report: DiffReport): string {
 <summary><span class="badge ${cr.status}">${STATUS_TEXT[cr.status]}</span>${cr.checks?.regression ? ' <span class="badge error">regression</span>' : cr.checks?.fixed ? ' <span class="badge identical">fixed</span>' : ""} <strong>${escapeHtml(cr.id)}</strong> <span class="input">${escapeHtml(cr.judgement?.summary && cr.status === "changed" ? cr.judgement.summary : cr.input.slice(0, 160))}</span></summary>
 <div class="body">
 ${inputHtml(cr)}
+${jsonHtml(base, head)}
 <div class="grid">
 <div><div class="label">base (${escapeHtml(report.meta.baseRef)})</div><pre>${segmentsHtml(leftSide(segs))}</pre></div>
 <div><div class="label">head (${escapeHtml(report.meta.headRef)})</div><pre>${segmentsHtml(rightSide(segs))}</pre></div>
@@ -142,6 +158,7 @@ del { background:var(--del); color:var(--delfg); }
 .judge { margin-top:10px; padding:8px 10px; border-left:3px solid var(--noise); background:var(--panel); }
 .convo { border:1px solid var(--border); border-radius:6px; background:var(--panel); padding:6px 10px; white-space:pre-wrap; font-size:13px; }
 .turn { padding:4px 0; } .turn + .turn { border-top:1px dashed var(--border); } .role { font-size:11px; font-weight:600; text-transform:uppercase; color:var(--muted); margin-right:8px; }
+table.json td, table.json th { text-align:left; font-size:12.5px; vertical-align:top; } table.json td.changed { color:var(--changed); } table.json td.added { color:var(--same); } table.json td.removed { color:var(--err); }
 .checks { margin:4px 0; padding-left:18px; } .fail { color:var(--err); } .why { color:var(--muted); }
 .filters { margin:8px 0; } .filters label { margin-right:12px; }
 </style>

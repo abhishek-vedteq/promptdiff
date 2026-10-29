@@ -23,6 +23,18 @@ A case is **changed** when `between > 1.5 × within + 0.05`. Otherwise it's **no
 
 With `--runs 1` there's no way to measure variation, so any difference counts as **changed**. Use `--runs 3` or more when your model isn't deterministic. The terminal and HTML reports show the within and between distances for each case.
 
+## JSON answers
+
+When both answers are JSON (plain, or in a single ```` ```json ```` block), promptdiff compares them **field by field** instead of word by word:
+
+```
+JSON: 2 fields changed
+~ confidence: 0.9 → 0.6
++ escalate: true
+```
+
+Distance is the share of fields that differ, so reordered keys or different whitespace count as identical, and the noise detection above works on fields.
+
 ## Caching
 
 Results are cached in `.promptdiff/cache/` at the repo root. The cache key is a SHA-256 hash of the prompt, model, temperature, max tokens, input, and run index. That means:

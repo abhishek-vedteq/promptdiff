@@ -22,6 +22,10 @@ export async function gatherStatus(env: NodeJS.ProcessEnv = process.env, configF
         if (!login.loggedIn) return { def, ready: false, detail: "installed, not logged in" };
         return { def, ready: true, detail: `logged in${login.method ? ` (${login.method})` : ""}` };
       }
+      if (def.checkReady) {
+        const r = await def.checkReady(env);
+        return { def, ready: r.ready, detail: r.detail };
+      }
       const resolved = resolveCredential(def, config, env);
       return resolved ? { def, ready: true, detail: resolved.label } : { def, ready: false, detail: "not set up" };
     }),

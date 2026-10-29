@@ -1,0 +1,135 @@
+name: promptdiff
+description: See how a prompt change changes your model's answers. Posts a PR comment with each test case's before and after.
+author: abhishek-vedteq
+branding:
+  icon: git-pull-request
+  color: green
+
+inputs:
+  prompt:
+    description: 'Prompt to compare: a file (prompts/support.md) or a constant in code (src/email.prompt.ts#SYSTEM_PROMPT). Separate several with spaces or new lines.'
+    required: true
+  base:
+    description: Git ref to compare against. Defaults to the pull request's base branch.
+    required: false
+    default: ""
+  model:
+    description: Model as provider:model-id. Defaults to `model:` in promptdiff.config.yaml.
+    required: false
+    default: ""
+  fail-on:
+    description: "When to fail the check: regression (new prompt fails checks the old one passed), change (any answer changed), check (any check fails), or none."
+    required: false
+    default: regression
+  comment:
+    description: Post the results as a PR comment (updated on every push).
+    required: false
+    default: "true"
+  max-cost:
+    description: Stop if the run would cost more than this many USD.
+    required: false
+    default: ""
+  args:
+    description: Any other promptdiff flags, e.g. "--runs 3 --compare semantic".
+    required: false
+    default: ""
+  github-token:
+    description: "Token for posting the PR comment. The job needs `permissions: pull-requests: write`."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  changed:
+    description: Number of test cases whose answers changed (summed over all prompts).
+    value: ${{ steps.run.outputs.changed }}
+  regressions:
+    description: Number of test cases that regressed (summed over all prompts).
+    value: ${{ steps.run.outputs.regressions }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Build promptdiff
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --no-audit --no-fund --loglevel=error && npm run build --silent
+
+    - name: Compare prompts
+      id: run
+      shell: bash
+      env:
+        PD_PROMPTS: ${{ inputs.prompt }}
+        PD_BASE: ${{ inputs.base }}
+        PD_MODEL: ${{ inputs.model }}
+        PD_FAIL_ON: ${{ inputs.fail-on }}
+        PD_COMMENT: ${{ inputs.comment }}
+        PD_MAX_COST: ${{ inputs.max-cost }}
+        PD_ARGS: ${{ inputs.args }}
+        PD_BASE_REF: ${{ github.base_ref }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PD_CLI: ${{ github.action_path }}/dist/cli.js
+      run: |
+        set -uo pipefail
+        base="${PD_BASE:-}"
+        if [ -z "$base" ]; then
+          if [ -n "${PD_BASE_REF:-}" ]; then
+            git fetch --no-tags --quiet origin "$PD_BASE_REF" || true
+            base="origin/$PD_BASE_REF"
+          else
+            base="HEAD~1"
+          fi
+        fi
+        if ! git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+          echo "::error::Can't find '$base'. Check out with fetch-depth: 0 (actions/checkout) so promptdiff can read the old prompt."
+          exit 1
+        fi
+
+        common=(--base "$base" --yes)
+        [ -n "${PD_MODEL:-}" ] && common+=(--model "$PD_MODEL")
+        [ -n "${PD_MAX_COST:-}" ] && common+=(--max-cost "$PD_MAX_COST")
+        # shellcheck disable=SC2206
+        extra=(${PD_ARGS:-})
+        gate=()
+        case "${PD_FAIL_ON:-regression}" in
+          regression) gate=(--fail-on-regression) ;;
+          change) gate=(--fail-on-change) ;;
+          check) gate=(--fail-on-check) ;;
+          none) ;;
+          *) echo "::error::fail-on must be regression, change, check, or none"; exit 1 ;;
+        esac
+        comment=()
+        [ "${PD_COMMENT:-true}" = "true" ] && [ -n "${PD_BASE_REF:-}" ] && comment=(--github-comment)
+
+        status=0; changed=0; regressions=0; i=0
+        for prompt in $PD_PROMPTS; do
+          i=$((i + 1))
+          echo "::group::promptdiff $prompt"
+          # The real run: posts the comment, writes the report, and decides the exit code.
+          # ${arr[@]+"${arr[@]}"} keeps empty arrays working under `set -u` on bash 3.2 (macOS runners).
+          node "$PD_CLI" "$prompt" "${common[@]}" ${extra[@]+"${extra[@]}"} ${gate[@]+"${gate[@]}"} ${comment[@]+"${comment[@]}"} --html "promptdiff-report-$i.html" --json > promptdiff-result.json
+          code=$?
+          # The same results again as readable text for the log (all cached, so free and instant).
+          node "$PD_CLI" "$prompt" "${common[@]}" ${extra[@]+"${extra[@]}"} --no-color || true
+          echo "::endgroup::"
+          if [ -s promptdiff-result.json ]; then
+            changed=$((changed + $(node -e 'const r=require("./promptdiff-result.json");console.log(r.summary.changed)')))
+            regressions=$((regressions + $(node -e 'const r=require("./promptdiff-result.json");console.log(r.summary.checks?.regressions??0)')))
+          fi
+          [ "$code" -gt "$status" ] && status=$code
+        done
+        rm -f promptdiff-result.json
+        echo "changed=$changed" >> "$GITHUB_OUTPUT"
+        echo "regressions=$regressions" >> "$GITHUB_OUTPUT"
+        exit $status
+
+    - name: Upload report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: promptdiff-report
+        path: promptdiff-report-*.html
+        if-no-files-found: ignore

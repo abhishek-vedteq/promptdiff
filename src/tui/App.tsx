@@ -123,7 +123,10 @@ function NextStep({ controller: c, file }: { controller: Controller; file?: stri
       {changed && info?.error ? (
         <>
           <Text>This prompt has no test cases yet ({info.file}).</Text>
-          <Text dimColor>Create {info.file} with one JSON object per line, e.g. {'{"input": "a message your users send"}'}, then press enter.</Text>
+          <Text>
+            Press <Text bold color={ACCENT}>g</Text> to have {c.settings.model} write some from the prompt, then review them.
+          </Text>
+          <Text dimColor>Or create {info.file} yourself: one JSON object per line, e.g. {'{"input": "a message your users send"}'}.</Text>
         </>
       ) : changed ? (
         <>
@@ -273,6 +276,7 @@ export function App({ controller: c, login }: AppProps) {
         rerender();
         return;
       }
+      if (step.id === "cases") setMessage({ tone: "info", lines: [`Working on it: ${step.action}…`] });
       const done = await c.fixStep(step.id);
       const steps = c.setupSteps();
       const next = steps.findIndex((st) => !st.done);
@@ -332,6 +336,15 @@ export function App({ controller: c, login }: AppProps) {
         else if (input === "k" || key.pageUp) setView({ ...view, scroll: Math.max(0, view.scroll - (key.pageUp ? 10 : 1)) });
         else if (input === "o" && c.lastReport) c.deps.openFile(c.lastReport);
         else if (input === "c") void startCompare(false);
+        else if (input === "a") {
+          void c.approve().then(
+            (msg) => {
+              setMessage({ tone: "success", lines: [msg] });
+              setView({ name: "home" });
+            },
+            (err: unknown) => setMessage(errorMessage(err)),
+          );
+        }
         return;
       }
 
@@ -378,6 +391,18 @@ export function App({ controller: c, login }: AppProps) {
         else if ((key.downArrow || input === "j") && n) setSelected((i) => (i + 1) % n);
         else if (key.return) void startCompare(false);
         else if (input === "p") void startCompare(true);
+        else if (input === "g" && current) {
+          const info = c.casesFor(current.path);
+          if (info && !info.error) {
+            setMessage({ tone: "info", lines: [`${current.path} already has ${info.count} test cases in ${info.file}.`, `To add more: promptdiff cases generate ${current.path} --append`] });
+          } else {
+            setMessage({ tone: "info", lines: [`Writing test cases for ${displayName(current.path)} with ${c.settings.model}…`] });
+            void c.generateFor(current.path).then(
+              (msg) => setMessage({ tone: "success", lines: [msg] }),
+              (err: unknown) => setMessage(errorMessage(err)),
+            );
+          }
+        }
         else if (input === "m") void openModelPicker();
         else if (input === "b") setView({ name: "base", value: c.settings.base });
         else if (input === "r") {
@@ -505,6 +530,7 @@ export function App({ controller: c, login }: AppProps) {
           ["r", "runs"],
           ["s", "semantic"],
           ["p", "cost"],
+          ["g", "write test cases"],
           ...(c.report ? [["v", "last results"] as [string, string]] : []),
           ...(c.lastReport ? [["o", "open report"] as [string, string]] : []),
           ["l", "log in"],
@@ -687,7 +713,7 @@ export function App({ controller: c, login }: AppProps) {
       </Box>
     );
   } else if (view.name === "results" && c.report) {
-    keys = [["↑↓", "case"], ["j k", "scroll"], ["o", "open full report"], ["c", "compare again"], ["?", "help"], ["esc", "back"]];
+    keys = [["↑↓", "case"], ["j k", "scroll"], ["o", "open full report"], ["a", "approve these answers"], ["c", "compare again"], ["?", "help"], ["esc", "back"]];
     const report = c.report;
     const s = report.summary;
     const listWidth = Math.min(34, Math.floor(columns / 3));
@@ -862,6 +888,7 @@ export function App({ controller: c, login }: AppProps) {
       <Box flexDirection="column" rowGap={1}>
         <Text bold>Compare with which version?</Text>
         <Text dimColor>A branch, tag, or commit, e.g. main, v1.2, or HEAD~3. Your working copy is compared against it.</Text>
+        <Text dimColor>Or type approved to compare with the answers you approved (a on the results screen).</Text>
         <Box borderStyle="round" borderColor={ACCENT} paddingX={1}>
           <TextInput
             value={view.value}

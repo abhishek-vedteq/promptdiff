@@ -10,14 +10,28 @@ Test cases live in a JSONL file (`cases.jsonl` by default), one JSON object per 
 
 | Field      | Required | Description                                                        |
 | ---------- | -------- | ------------------------------------------------------------------ |
-| `input`    | one of `input` / `messages` | Sent as the user message. The prompt file is the system prompt. |
-| `messages` | one of `input` / `messages` | A multi-turn conversation. See below.            |
+| `input`    | one of `input` / `messages` / `from` | Sent as the user message. The prompt is the system prompt. |
+| `messages` | one of `input` / `messages` / `from` | A multi-turn conversation. See below.     |
+| `from`     | one of `input` / `messages` / `from` | Build the message by calling your code (opt-in). See below. |
 | `id`       | no       | Name shown in reports. Defaults to `line-<n>`. Must be unique.      |
 | `vars`     | no       | Values for `{{placeholders}}` in the prompt. See below.             |
 | `assert`   | no       | Checks the output must pass. See [Assertions](./assertions.md).     |
 | `metadata` | no       | Any object. Ignored by promptdiff and included in the JSON output.  |
 
 Blank lines are skipped. Unknown fields are errors, so typos like `"asserts"` are caught. Invalid lines are reported with their line number, for example `cases.jsonl:7: invalid JSON (...)`.
+
+## Writing test cases for you
+
+Don't have test cases yet? Let a model draft them from your prompt:
+
+```bash
+promptdiff cases generate prompts/support.md            # 12 cases into the prompt's test-case file
+promptdiff cases generate prompts/support.md -n 20 --with-checks
+```
+
+It writes realistic, varied user messages: everyday requests, edge cases, missing information, off-topic messages, and attempts to make the assistant ignore its instructions. If the prompt has `{{variables}}`, each case gets values for them. `--with-checks` adds a plain-English check to each case. In the app, press **g**.
+
+**Review what it writes.** The best test cases are real messages from your users; generated ones are a starting point. Use `--append` to add more, `--force` to replace the file, or `-o <file>` to write elsewhere.
 
 ## Multi-turn conversations
 
@@ -60,3 +74,15 @@ vars:
 - Cover the situations your prompt is meant to handle, plus a few edge cases (angry users, off-topic questions, missing information).
 - Keep each case small and focused, so a changed output points to one behavior.
 - Add a case whenever you fix a bug in the prompt, so the fix can't silently regress.
+
+## Messages built by your code
+
+If your app builds the user message with a function, a test case can call it, so you test the exact message your app sends:
+
+```jsonl
+{"id": "recruiter-email", "from": {"call": "src/email/prompts/recruiter.prompt.ts#createRecruiterUserPrompt", "args": [{"candidateName": "Ada Lopez", "jobTitle": "Product Manager"}]}}
+```
+
+`args` are passed to the function as-is, and it should return the message as a string (or a list of `{role, content}` messages).
+
+**This runs your code**, so it only happens with `--run-code` (or `runCode: true` in `promptdiff.config.yaml`). TypeScript functions run with the project's `tsx` (install it with `npm i -D tsx`); JavaScript with Node; Python with `python3`. Everything else in promptdiff reads your code without running it.

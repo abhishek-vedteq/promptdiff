@@ -16,14 +16,17 @@ export const testCaseSchema = z
     id: z.union([z.string().min(1), z.number()]).optional(),
     input: z.string({ error: '"input" must be a string' }).optional(),
     messages: z.array(chatMessageSchema).min(1).optional(),
+    /** Build the message by calling a project function (needs --run-code). */
+    from: z.object({ call: z.string().regex(/.+#[A-Za-z_$][\w$]*$/, 'use "path/to/file.ts#functionName"'), args: z.array(z.unknown()).default([]) }).strict().optional(),
     vars: varsSchema.optional(),
     assert: z.array(assertionSchema).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .strict()
   .superRefine((c, ctx) => {
-    if ((c.input === undefined) === (c.messages === undefined)) {
-      ctx.addIssue({ code: "custom", message: 'each case needs either "input" or "messages" (not both)' });
+    const given = [c.input, c.messages, c.from].filter((v) => v !== undefined).length;
+    if (given !== 1) {
+      ctx.addIssue({ code: "custom", message: 'each case needs exactly one of "input", "messages", or "from"' });
       return;
     }
     if (c.messages) {
@@ -40,6 +43,8 @@ export interface TestCase {
   input?: string;
   /** Multi-turn conversation ending with a user message. */
   messages?: ChatMessage[];
+  /** Built by calling project code before the run (replaced by input/messages). */
+  from?: { call: string; args: unknown[] };
   /** Template variables for the prompt. */
   vars: Record<string, string | number | boolean>;
   assert: Assertion[];
@@ -121,8 +126,8 @@ export function parseCases(text: string, fileLabel = "cases.jsonl"): TestCase[] 
     seen.set(id, lineNo);
     const assert = parsed.data.assert ?? [];
     validateAssertionSchemas(assert, `${fileLabel}:${lineNo}`);
-    const { input, messages, vars, metadata } = parsed.data;
-    cases.push({ id, input, messages, vars: vars ?? {}, assert, metadata, line: lineNo });
+    const { input, messages, from, vars, metadata } = parsed.data;
+    cases.push({ id, input, messages, ...(from ? { from: { call: from.call, args: from.args } } : {}), vars: vars ?? {}, assert, metadata, line: lineNo });
   });
 
   if (cases.length === 0) {

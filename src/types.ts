@@ -65,6 +65,10 @@ export interface DiffReport {
     temperature?: number;
     maxOutputTokens?: number;
     runs: number;
+    /** With --snapshot: the base side is approved outputs, not the old prompt. */
+    snapshot?: boolean;
+    /** With --vs: base and head are two models running the same prompt (baseRef/headRef name them). */
+    vsModel?: string;
     /** How outputs were compared: word overlap, or an LLM judge. */
     compare: "words" | "semantic";
     /** Model used for llm-rubric checks and semantic comparison, if any. */

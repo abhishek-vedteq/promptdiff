@@ -3,6 +3,7 @@ import type { CaseStatus } from "../analysis.js";
 import type { CaseResult, DiffReport, VersionTotals } from "../types.js";
 import { leftSide, rightSide, wordDiff, wrapSegments, type Segment } from "./diff.js";
 import { formatCost, formatInt, formatMs, formatPercentChange } from "./format.js";
+import { diffJson, parseJsonOutput, showJson } from "../json-diff.js";
 import { accentWith, glyph, nest, pill, rule, wordmark } from "../ui/theme.js";
 
 export interface TerminalOptions {
@@ -82,6 +83,23 @@ function renderStacked(c: ChalkInstance, base: string, head: string, width: numb
   ];
 }
 
+/** Field-by-field changes when both outputs are JSON; undefined otherwise. */
+export function jsonLines(c: ChalkInstance, base: string, head: string, max = 25): string[] | undefined {
+  const a = parseJsonOutput(base);
+  const b = parseJsonOutput(head);
+  if (a === undefined || b === undefined) return undefined;
+  const changes = diffJson(a, b);
+  if (changes.length === 0) return [`  ${c.dim("JSON is the same (only formatting or key order differs)")}`];
+  const lines = [`  ${c.dim(`JSON: ${changes.length} field${changes.length === 1 ? "" : "s"} changed`)}`];
+  for (const ch of changes.slice(0, max)) {
+    if (ch.kind === "changed") lines.push(`  ${c.yellow("~")} ${c.bold(ch.path)}: ${c.red(showJson(ch.before))} ${c.dim("→")} ${c.green(showJson(ch.after))}`);
+    else if (ch.kind === "added") lines.push(`  ${c.green("+")} ${c.bold(ch.path)}: ${c.green(showJson(ch.after))}`);
+    else lines.push(`  ${c.red("-")} ${c.bold(ch.path)}: ${c.red(showJson(ch.before))}`);
+  }
+  if (changes.length > max) lines.push(`  ${c.dim(`…and ${changes.length - max} more`)}`);
+  return lines;
+}
+
 function metricLine(c: ChalkInstance, b: VersionTotals, h: VersionTotals, runs: number): string {
   const per = (n: number, calls: number) => (calls ? n / calls : 0);
   const delta = (x: number | undefined, y: number | undefined) => {
@@ -159,8 +177,11 @@ export function renderCase(cr: CaseResult, report: DiffReport, opts: TerminalOpt
     const runNote = report.meta.runs > 1 ? " · run 1" : "";
     const width = opts.width - NEST_EXTRA;
     const labels: [string, string] = [`before (${report.meta.baseRef})${runNote}`, `after (${report.meta.headRef})${runNote}`];
+    const json = jsonLines(c, base, head);
     lines.push(
-      ...(sbs
+      ...(json
+        ? json
+        : sbs
         ? renderSideBySide(c, base, head, width, labels)
         : opts.stacked
           ? renderStacked(c, base, head, width, labels, plain)
@@ -230,7 +251,7 @@ export function renderSummary(report: DiffReport, opts: TerminalOptions): string
   if (meta.runs === 1 && s.changed > 0 && meta.compare === "words") {
     notes.push(c.dim("Tip: use --runs 3 or --compare semantic to tell real changes from run-to-run randomness."));
   }
-  if (!meta.promptChanged) notes.push(c.yellow(`Note: the prompt is identical in ${meta.baseRef} and ${meta.headRef}.`));
+  if (!meta.promptChanged && !meta.vsModel && !meta.snapshot) notes.push(c.yellow(`Note: the prompt is identical in ${meta.baseRef} and ${meta.headRef}.`));
 
   const width = Math.min(opts.width, 100);
   return ["", rule(c, width, "Summary"), ...inside.map((l) => (l ? `  ${l}` : "")), ...(notes.length ? ["", ...notes.map((n) => `  ${n}`)] : [])].join("\n");
@@ -241,7 +262,9 @@ export function renderHeader(report: DiffReport, opts: TerminalOptions): string 
   const { meta } = report;
   const width = Math.min(opts.width, 100);
   const details = [
-    `${c.bold(meta.file)}  ${c.red(meta.baseRef)} ${c.dim(glyph.arrow)} ${c.green(meta.headRef)}`,
+    meta.vsModel
+      ? `${c.bold(meta.file)}  ${c.dim("on two models:")} ${c.red(meta.baseRef)} ${c.dim("vs")} ${c.green(meta.headRef)}`
+      : `${c.bold(meta.file)}  ${c.red(meta.baseRef)} ${c.dim(glyph.arrow)} ${c.green(meta.headRef)}`,
     c.dim(
       [meta.model, `${meta.runs} run${meta.runs === 1 ? "" : "s"} per case`, `compared by ${meta.compare === "semantic" ? "meaning" : "words"}`, ...(meta.judgeModel && meta.judgeModel !== meta.model ? [`judge ${meta.judgeModel}`] : [])].join(` ${glyph.sep} `),
     ),

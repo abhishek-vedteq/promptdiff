@@ -53,6 +53,7 @@ function fakeDeps(over: Partial<ControllerDeps> = {}): ControllerDeps & { calls:
     cases: async (file: string) => ({ file, count: 6, conversations: 1 }),
     init: async (out: { write(s: string): unknown }) => void out.write("  created  cases.jsonl\n"),
     openFile: vi.fn(),
+    generateCases: async () => "cases.jsonl",
     gitInit: async () => {},
     createSamplePrompt: async () => "prompts/support.md",
     ...over,

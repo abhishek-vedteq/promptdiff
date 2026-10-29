@@ -27,7 +27,6 @@ src/
   detect.ts           picking a default model from existing logins
   ui/                 theme (colors, boxes, glyphs), error formatting, and the progress spinner
   tui/                the interactive app (Ink): controller.ts (state and actions), App.tsx (screens)
-  commands/           run, config, init
   providers/          Provider interface, registry, AI SDK adapter, mock
   config/             user key store, project YAML config, flag precedence
   git.ts              reading files at refs (execFile, never a shell)
@@ -35,6 +34,12 @@ src/
   python-prompts.ts   reading prompts from Python, via python/extract_prompts.py (Python's own parser)
   prompt-source.ts    loading a prompt ("file" or "file.ts#NAME") at a git ref or the working copy
   prompts.ts          finding prompts in a project
+  data-prompts.ts     prompts in YAML/JSON files
+  json-diff.ts        field-by-field comparison of JSON answers
+  snapshots.ts        approved answers (--approve / --snapshot)
+  batch.ts            provider batch jobs (--batch)
+  run-code.ts         opt-in: building test cases by calling project code
+  commands/           run, config, init, login, cases generate, bisect
   cases.ts            JSONL test-case parsing
   runner.ts           concurrency, retries, caching, per-case results
   analysis.ts         identical / noise / changed classification
@@ -42,6 +47,9 @@ src/
   pricing.ts          cost estimates from pricing.json
   report/             terminal, JSON, and HTML output
 python/               the Python helper, shipped in the npm package
+action.yml            the GitHub Action (uses: abhishek-vedteq/promptdiff@v1)
+vscode-extension/     the VS Code extension (build: cd vscode-extension && npm ci && npm run build)
+scripts/demo/         records docs/demo.gif from the real app
 test/                 vitest tests (mock provider only)
 docs/                 user documentation
 ```
@@ -63,11 +71,25 @@ Never read another tool's stored credentials. Providers that use an existing log
 - Run git through `git()` in `src/git.ts` (argument arrays via `execFile`).
 - Keep user-facing errors as `PromptdiffError` with a `hint` that says how to fix the problem.
 
+## Re-recording the demo GIF
+
+`docs/demo.gif` is recorded from the real app (macOS/Linux):
+
+```bash
+npm run build
+python3 -m venv /tmp/pd-venv && /tmp/pd-venv/bin/pip install pillow pyte
+/tmp/pd-venv/bin/python scripts/demo/make_demo.py --model claude-code:default --out docs/demo.gif
+```
+
+It builds a throwaway demo repo, edits its prompt, drives `promptdiff` in a pseudo-terminal, and renders each screen. It makes real model calls (8 by default).
+
 ## Releasing (maintainers)
 
 ```bash
 npm version patch   # or minor / major; creates a vX.Y.Z commit and tag
 git push --follow-tags
 ```
+
+To update the GitHub Action's `v1` tag to the latest release: `git tag -f v1 && git push -f origin v1`.
 
 The Release workflow publishes to npm when a `v*` tag is pushed (needs the `NPM_TOKEN` repo secret).

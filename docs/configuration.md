@@ -43,6 +43,7 @@ assert:                            # checks applied to every case
 | `maxCost`         | number  | (none)         | Budget in USD. See [Cost controls](./cost-controls.md). |
 | `confirmAbove`    | number  | `1`            | Ask before runs estimated above this many USD.       |
 | `prompts`         | array   | auto-detected  | Globs (or `file.ts#NAME`) for the prompts to list. An entry can be `{path, cases}` to give those prompts their own test cases. See [Prompts in code](./prompts-in-code.md). |
+| `runCode`         | boolean | `false`        | Allow test cases to call your code (`from`). See [Test cases](./test-cases.md#messages-built-by-your-code). |
 | `vars`            | object  | (none)         | Default template variables. See [Test cases](./test-cases.md#prompt-templates). |
 | `assert`          | array   | (none)         | Checks applied to every case. See [Assertions](./assertions.md). |
 

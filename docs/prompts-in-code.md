@@ -1,6 +1,6 @@
 # Prompts in code
 
-Most apps don't keep prompts in text files. They keep them in code. promptdiff reads prompts from **TypeScript/JavaScript** and **Python**.
+Most apps don't keep prompts in text files. They keep them in code or config. promptdiff reads prompts from **TypeScript/JavaScript**, **Python**, and **YAML/JSON** files.
 
 ## TypeScript and JavaScript
 
@@ -90,6 +90,25 @@ It can follow:
 Prompts built inside functions (`def build_prompt(user): return f"..."`) need runtime values, so they can't be read, as with TypeScript.
 
 > **Tested on real projects:** on two well-known open-source Python AI projects (one with 104 prompts stored as class attributes), every listed prompt could be read. In promptdiff's own tests, every supported pattern produces exactly the same text as Python does when it imports the module.
+
+## YAML and JSON
+
+```yaml
+# config/prompts.yaml
+support:
+  system: |
+    You are the support assistant for Acme.
+agents:
+  - name: router
+    instructions: Route each message to billing, tech, or other.
+```
+
+```bash
+promptdiff config/prompts.yaml#support.system --base main
+promptdiff config/prompts.yaml#agents[0].instructions --base main
+```
+
+Use a key path: dotted keys and `[n]` for list items. The app lists values whose key mentions prompt, instruction, system, template, or persona (and that hold real text).
 
 ## What appears in the app
 

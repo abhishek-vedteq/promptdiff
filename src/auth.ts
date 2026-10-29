@@ -39,6 +39,9 @@ export function resolveCredential(def: ProviderDefinition, config: UserConfig, e
   const saved = config.keys[def.id]?.trim();
   if (saved) return { credential: { kind: "api-key", key: saved }, source: "config", label: `${maskKey(saved)} saved by promptdiff`, secrets: [saved] };
 
+  const ambient = def.ambient?.(env);
+  if (ambient) return { credential: { kind: "none" }, source: "env", label: ambient, secrets: [] };
+
   if (def.id === "anthropic" && antLoginAvailable(env)) {
     const secrets: string[] = [];
     return {

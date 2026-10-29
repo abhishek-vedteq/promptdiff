@@ -1,0 +1,47 @@
+{
+  "name": "promptdiff-vscode",
+  "displayName": "promptdiff",
+  "description": "See how editing a prompt changes your model's answers, right from the editor.",
+  "version": "0.1.0",
+  "publisher": "abhishek-vedteq",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/abhishek-vedteq/promptdiff.git", "directory": "vscode-extension" },
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Testing", "Other"],
+  "keywords": ["prompt", "llm", "diff", "evals", "ai"],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "promptdiff.open", "title": "Open", "category": "promptdiff" },
+      { "command": "promptdiff.compare", "title": "Compare this prompt…", "category": "promptdiff" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "promptdiff.compare", "group": "promptdiff", "when": "resourceScheme == file" }
+      ],
+      "editor/title": [
+        { "command": "promptdiff.compare", "group": "navigation", "when": "resourceFilename =~ /prompt/i" }
+      ]
+    },
+    "configuration": {
+      "title": "promptdiff",
+      "properties": {
+        "promptdiff.command": {
+          "type": "string",
+          "default": "npx --yes promptdiff",
+          "description": "How to run promptdiff, e.g. \"promptdiff\" if it's installed globally."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "package": "npx --yes @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.6.0"
+  }
+}

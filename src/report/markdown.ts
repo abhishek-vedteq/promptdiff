@@ -1,4 +1,5 @@
 import { diffLines } from "diff";
+import { diffJson, parseJsonOutput, showJson } from "../json-diff.js";
 import type { CaseResult, DiffReport } from "../types.js";
 import { formatCost, formatInt, formatMs, formatPercentChange } from "./format.js";
 
@@ -59,7 +60,20 @@ function caseSection(cr: CaseResult, report: DiffReport): string {
     }
     if (cr.status === "changed" || cr.checks?.regression) {
       const runNote = report.meta.runs > 1 ? " (run 1 of each)" : "";
-      out.push(`Base → head${runNote}:`, "", diffBlock(cr.base[0]?.text ?? "", cr.head[0]?.text ?? ""), "");
+      const a = parseJsonOutput(cr.base[0]?.text ?? "");
+      const b = parseJsonOutput(cr.head[0]?.text ?? "");
+      if (a !== undefined && b !== undefined) {
+        const changes = diffJson(a, b);
+        out.push(`JSON fields changed${runNote}:`, "", "| | field | before | after |", "| --- | --- | --- | --- |");
+        for (const ch of changes.slice(0, 40)) {
+          const sign = ch.kind === "changed" ? "~" : ch.kind === "added" ? "+" : "−";
+          out.push(`| ${sign} | \`${ch.path.replace(/`/g, "'")}\` | ${ch.before === undefined ? "" : cell(showJson(ch.before))} | ${ch.after === undefined ? "" : cell(showJson(ch.after))} |`);
+        }
+        if (changes.length > 40) out.push(`| | …and ${changes.length - 40} more | | |`);
+        out.push("");
+      } else {
+        out.push(`Base → head${runNote}:`, "", diffBlock(cr.base[0]?.text ?? "", cr.head[0]?.text ?? ""), "");
+      }
     }
     const b = cr.baseTotals;
     const h = cr.headTotals;

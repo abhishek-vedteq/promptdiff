@@ -10,6 +10,7 @@ export const DEFAULT_OUTPUT_TOKENS = 500;
 
 export interface PlannedCall {
   version: "base" | "head";
+  model: string;
   caseId: string;
   runIndex: number;
   inputTokens: number;
@@ -47,6 +48,10 @@ export interface PlanOptions {
   inputFor: (tc: TestCase) => string;
   runs: number;
   modelSpec: string;
+  /** With --vs: the model the head side runs on. */
+  headModelSpec?: string;
+  /** With --snapshot: the base side comes from approved outputs, so it costs nothing. */
+  skipBase?: boolean;
   temperature?: number;
   maxOutputTokens?: number;
   cache?: ResultCache;
@@ -75,9 +80,10 @@ export async function planRun(opts: PlanOptions): Promise<RunPlan> {
       const prompt = opts.promptFor(version, tc);
       const input = opts.inputFor(tc);
       for (let runIndex = 0; runIndex < opts.runs; runIndex++) {
+        const model = version === "head" && opts.headModelSpec ? opts.headModelSpec : opts.modelSpec;
         const key = cacheKey({
           prompt,
-          model: opts.modelSpec,
+          model,
           temperature: opts.temperature,
           maxOutputTokens: opts.maxOutputTokens,
           input,
@@ -85,7 +91,7 @@ export async function planRun(opts: PlanOptions): Promise<RunPlan> {
         });
         const hit = await opts.cache?.get(key);
         if (hit?.outputTokens !== undefined) cachedOutputTokens.push(hit.outputTokens);
-        calls.push({ version, caseId: tc.id, runIndex, inputTokens: estimateTokens(prompt.length + input.length), cached: !!hit });
+        calls.push({ version, model, caseId: tc.id, runIndex, inputTokens: estimateTokens(prompt.length + input.length), cached: !!hit || (version === "base" && opts.skipBase === true) });
       }
     }
   }
@@ -101,7 +107,17 @@ export async function planRun(opts: PlanOptions): Promise<RunPlan> {
     inputTokens: uncached.reduce((n, c) => n + c.inputTokens, 0),
     outputTokens: uncached.length * assumedOutputTokens,
   };
-  generation.cost = generation.calls === 0 ? 0 : estimateCost(opts.pricing, opts.modelSpec, generation.inputTokens, generation.outputTokens);
+  // Price each model's calls separately (they differ with --vs).
+  const priceCalls = (outputTokensPerCall: number) => {
+    let total: number | undefined = 0;
+    for (const model of new Set(uncached.map((c) => c.model))) {
+      const mine = uncached.filter((c) => c.model === model);
+      const cost = estimateCost(opts.pricing, model, mine.reduce((n, c) => n + c.inputTokens, 0), mine.length * outputTokensPerCall);
+      total = total !== undefined && cost !== undefined ? total + cost : undefined;
+    }
+    return total;
+  };
+  generation.cost = generation.calls === 0 ? 0 : priceCalls(assumedOutputTokens);
 
   // Judge calls only happen for outputs that aren't cached (cached outputs have cached grades).
   const casesById = new Map(opts.cases.map((tc) => [tc.id, tc]));
@@ -128,7 +144,7 @@ export async function planRun(opts: PlanOptions): Promise<RunPlan> {
   const cost = generation.cost !== undefined && judge.cost !== undefined ? generation.cost + judge.cost : undefined;
   let worstCaseCost: number | undefined;
   if (opts.maxOutputTokens !== undefined && generation.calls > 0) {
-    const worstGen = estimateCost(opts.pricing, opts.modelSpec, generation.inputTokens, generation.calls * opts.maxOutputTokens);
+    const worstGen = priceCalls(opts.maxOutputTokens);
     worstCaseCost = worstGen !== undefined && judge.cost !== undefined ? worstGen + judge.cost : undefined;
   }
 

@@ -26,6 +26,11 @@ export interface CliRunOptions {
   maxCost?: string;
   compare?: string;
   judge?: string;
+  vs?: string;
+  approve?: boolean;
+  snapshot?: boolean;
+  batch?: boolean;
+  runCode?: boolean;
   yes?: boolean;
   dryRun?: boolean;
   config?: string;
@@ -57,6 +62,16 @@ export interface ResolvedRunOptions {
   compare: "words" | "semantic";
   /** Judge model spec; defaults to the main model. */
   judgeModel: string;
+  /** --vs: compare the same prompt on this second model. */
+  vsModel?: string;
+  /** Save this run's new outputs as the approved ones. */
+  approve: boolean;
+  /** Compare against approved outputs instead of the old prompt. */
+  snapshot: boolean;
+  /** Send uncached calls as one provider batch job. */
+  batch: boolean;
+  /** Allow test cases to build their message by calling project code. */
+  runCode: boolean;
   yes: boolean;
   dryRun: boolean;
   /** Default template variables from the config file. */
@@ -182,6 +197,11 @@ export function resolveRunOptions(
     vars: project.vars ?? {},
     compare: parseCompare(cli.compare) ?? project.compare ?? "words",
     judgeModel: cli.judge ?? project.judge ?? model,
+    vsModel: cli.vs,
+    approve: cli.approve === true,
+    snapshot: cli.snapshot === true,
+    batch: cli.batch === true,
+    runCode: cli.runCode === true || project.runCode === true,
     maxCost: parseNumber("max-cost", cli.maxCost, { min: 0, max: 1_000_000 }) ?? project.maxCost,
     confirmAbove: project.confirmAbove ?? DEFAULTS.confirmAbove,
     yes: cli.yes === true,

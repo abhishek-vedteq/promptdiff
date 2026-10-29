@@ -227,3 +227,50 @@ describe("runCommand cost controls", () => {
     expect(provider.calls).toHaveLength(4);
   });
 });
+
+describe("runCommand --vs (model vs model)", () => {
+  it("runs the same prompt on two models and compares them", async () => {
+    const repo = makeRepo({ "prompts/p.md": "Be brief.\n", "cases.jsonl": '{"id": "a", "input": "hello"}', "promptdiff.config.yaml": "model: mock:model-a\n" });
+    writeFileSync(path.join(repo, "prompts/p.md"), "Be brief. (edited)\n");
+    const a = new MockProvider((req) => ({ text: `A says ${req.messages[0]!.content}`, inputTokens: 1, outputTokens: 1 }));
+    const b = new MockProvider((req) => ({ text: `B replies to ${req.messages[0]!.content}`, inputTokens: 1, outputTokens: 2 }));
+    const stdout = new Sink();
+    await runCommand("prompts/p.md", { cache: false, json: true, vs: "openai:model-b" }, {
+      cwd: repo, env: { OPENAI_API_KEY: "sk-test-vs-key-0001" }, stdout, stderr: new Sink(),
+      createProvider: (id) => (id === "openai" ? b : a), userConfigFile: path.join(tempDir(), "c.json"),
+    });
+    const report = JSON.parse(stdout.data) as DiffReport;
+    // Both models get the working-copy prompt; base/head are now the two models.
+    expect(a.calls.map((c) => [c.model, c.system])).toEqual([["model-a", "Be brief. (edited)\n"]]);
+    expect(b.calls.map((c) => [c.model, c.system])).toEqual([["model-b", "Be brief. (edited)\n"]]);
+    expect(report.meta).toMatchObject({ baseRef: "mock:model-a", headRef: "openai:model-b", vsModel: "openai:model-b" });
+    expect(report.cases[0]).toMatchObject({ status: "changed" });
+    expect(report.summary.head.outputTokens).toBe(2);
+  });
+});
+
+describe("approved snapshots", () => {
+  it("--approve saves outputs; --snapshot compares against them without re-running the old prompt", async () => {
+    const repo = makeRepo({ "prompts/p.md": "Version one\n", "cases.jsonl": CASES, "promptdiff.config.yaml": "model: mock:m\n" });
+    const { readFileSync, existsSync } = await import("node:fs");
+    const first = await run(repo, { approve: true, json: true });
+    const file = path.join(repo, "promptdiff-snapshots", "prompts_p.md.json");
+    expect(existsSync(file)).toBe(true);
+    expect(first.stderr).toContain("Approved 2 cases");
+    expect(JSON.parse(readFileSync(file, "utf8")).cases.a.outputs[0].text).toBe("[Version one] You said: hello");
+
+    writeFileSync(path.join(repo, "prompts/p.md"), "Version two\n");
+    const provider = new MockProvider();
+    const second = await run(repo, { snapshot: true, json: true }, provider);
+    const report = JSON.parse(second.stdout) as DiffReport;
+    expect(provider.calls.every((c) => c.system === "Version two\n")).toBe(true); // only the new prompt ran
+    expect(provider.calls).toHaveLength(2);
+    expect(report.meta).toMatchObject({ snapshot: true, baseRef: expect.stringMatching(/^approved \d{4}-\d\d-\d\d$/) });
+    expect(report.summary.changed).toBe(2);
+  });
+
+  it("--snapshot explains when nothing has been approved", async () => {
+    const repo = setup();
+    await expect(run(repo, { snapshot: true })).rejects.toMatchObject({ message: "No approved outputs for prompts/p.md yet.", hint: expect.stringContaining("--approve") });
+  });
+});

@@ -14,11 +14,8 @@ export const PROJECT_PRICING_FILE = "promptdiff.pricing.json";
 /** The pricing.json shipped with the package (one level above src/ and dist/). */
 export function loadBuiltinPricing(): PricingTable {
   const url = new URL("../pricing.json", import.meta.url);
-  try {
-    return pricingFileSchema.parse(JSON.parse(readFileSync(url, "utf8"))).models;
-  } catch {
-    return {};
-  }
+  // A broken built-in table is a bug in promptdiff, so fail loudly rather than silently dropping prices.
+  return pricingFileSchema.parse(JSON.parse(readFileSync(url, "utf8"))).models;
 }
 
 /** Loads a user pricing file. Missing optional files yield an empty table. */
@@ -39,6 +36,9 @@ export async function loadPricingFile(file: string, required: boolean): Promise<
   return parsed.data.models;
 }
 
+/** Whether a model has a price (exactly, or through a "provider:*" entry). */
+export const hasPrice = (table: PricingTable, model: string) => table[model] !== undefined || table[`${model.split(":")[0]}:*`] !== undefined;
+
 /** Returns USD cost, or undefined if the model isn't priced or usage is unknown. */
 export function estimateCost(
   table: PricingTable,
@@ -46,7 +46,8 @@ export function estimateCost(
   inputTokens: number | undefined,
   outputTokens: number | undefined,
 ): number | undefined {
-  const price = table[model];
+  // Exact model first, then a provider-wide entry like "ollama:*".
+  const price = table[model] ?? table[`${model.split(":")[0]}:*`];
   if (!price || inputTokens === undefined || outputTokens === undefined) return undefined;
   return (inputTokens * price.input + outputTokens * price.output) / 1_000_000;
 }

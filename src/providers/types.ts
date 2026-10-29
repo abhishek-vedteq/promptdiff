@@ -28,6 +28,8 @@ export interface Provider {
   generate(request: GenerateRequest): Promise<GenerateResponse>;
 }
 
+import type { BatchClient } from "../batch.js";
+
 /** How a provider authenticates. */
 export type Credential =
   | { kind: "api-key"; key: string }
@@ -62,7 +64,13 @@ export interface ProviderDefinition {
   /** "api" calls a model API; "cli" runs an installed command-line tool that has its own login. */
   kind?: "api" | "cli";
   capabilities?: ProviderCapabilities;
+  /** Credentials already in the environment that the SDK reads itself (e.g. AWS keys). Returns a label, or undefined. */
+  ambient?: (env: NodeJS.ProcessEnv) => string | undefined;
+  /** For providers without keys (e.g. a local server): whether it's usable right now. */
+  checkReady?: (env: NodeJS.ProcessEnv) => Promise<{ ready: boolean; detail: string }>;
   /** Checks that an API key works without spending tokens (e.g. by listing models). Throws if not. */
   verifyKey?: (key: string, fetchImpl?: typeof fetch) => Promise<void>;
   create(credential: Credential): Provider;
+  /** For providers with a batch API (about half price, results arrive later). */
+  createBatchClient?: (credential: Credential) => BatchClient;
 }

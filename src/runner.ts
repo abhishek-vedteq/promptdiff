@@ -5,6 +5,7 @@ import { transcript, type Judge, type Judgement } from "./judge.js";
 import { cacheKey, type ResultCache } from "./cache.js";
 import { caseInputKey, caseLabel, caseMessages, type TestCase } from "./cases.js";
 import type { Budget } from "./estimate.js";
+import type { SnapshotOutput } from "./snapshots.js";
 import { FatalProviderError, errorMessage } from "./errors.js";
 import { estimateCost, type PricingTable } from "./pricing.js";
 import type { Provider } from "./providers/types.js";
@@ -15,6 +16,10 @@ export interface RunnerOptions {
   provider: Provider;
   /** "provider:model-id", used for cache keys and pricing. */
   modelSpec: string;
+  /** With --snapshot: approved outputs used as the base side instead of calling the model. */
+  baseline?: Map<string, SnapshotOutput[]>;
+  /** With --vs: the head side runs on this model instead (same prompt, two models). */
+  headModel?: { provider: Provider; modelSpec: string; modelId: string };
   /** Model id passed to the provider. */
   modelId: string;
   basePrompt: string;
@@ -133,10 +138,11 @@ export async function runDiff(opts: RunnerOptions): Promise<CaseResult[]> {
   opts.onProgress?.(0, total);
 
   const runOne = async (tc: TestCase, version: Version, runIndex: number): Promise<RunOutput> => {
+    const side = version === "head" && opts.headModel ? opts.headModel : { provider: opts.provider, modelSpec: opts.modelSpec, modelId: opts.modelId };
     const prompt = opts.promptFor ? opts.promptFor(version, tc) : version === "base" ? opts.basePrompt : opts.headPrompt;
     const key = cacheKey({
       prompt,
-      model: opts.modelSpec,
+      model: side.modelSpec,
       temperature: opts.temperature,
       maxOutputTokens: opts.maxOutputTokens,
       input: caseInputKey(tc),
@@ -154,6 +160,13 @@ export async function runDiff(opts: RunnerOptions): Promise<CaseResult[]> {
       return out;
     };
 
+    if (version === "base" && opts.baseline) {
+      const approved = opts.baseline.get(tc.id);
+      const o = approved?.[runIndex % (approved?.length || 1)];
+      if (!o) return finish({ runIndex, text: "", latencyMs: 0, cached: true, error: `no approved output for this case yet (approve with --approve)` });
+      return finish({ runIndex, text: o.text, inputTokens: o.inputTokens, outputTokens: o.outputTokens, latencyMs: o.latencyMs ?? 0, cached: true });
+    }
+
     const hit = await opts.cache?.get(key);
     if (hit) {
       return finish({
@@ -162,7 +175,7 @@ export async function runDiff(opts: RunnerOptions): Promise<CaseResult[]> {
         inputTokens: hit.inputTokens,
         outputTokens: hit.outputTokens,
         latencyMs: hit.latencyMs,
-        cost: estimateCost(opts.pricing, opts.modelSpec, hit.inputTokens, hit.outputTokens),
+        cost: estimateCost(opts.pricing, side.modelSpec, hit.inputTokens, hit.outputTokens),
         cached: true,
       });
     }
@@ -176,8 +189,8 @@ export async function runDiff(opts: RunnerOptions): Promise<CaseResult[]> {
       let latencyMs = 0;
       const res = await withRetry(async () => {
         const started = performance.now();
-        const r = await opts.provider.generate({
-          model: opts.modelId,
+        const r = await side.provider.generate({
+          model: side.modelId,
           system: prompt,
           messages: caseMessages(tc),
           temperature: opts.temperature,
@@ -191,7 +204,7 @@ export async function runDiff(opts: RunnerOptions): Promise<CaseResult[]> {
         onRetry: ({ attempt, delayMs, error }) =>
           opts.onRetry?.(`case "${tc.id}" (${version} run ${runIndex + 1}): ${describeError(error, opts)}; retry ${attempt} in ${(delayMs / 1000).toFixed(1)}s`),
       });
-      const cost = estimateCost(opts.pricing, opts.modelSpec, res.inputTokens, res.outputTokens);
+      const cost = estimateCost(opts.pricing, side.modelSpec, res.inputTokens, res.outputTokens);
       opts.budget?.add(cost);
       await opts.cache?.set(key, {
         text: res.text,

@@ -50,9 +50,12 @@
     "url": "git+https://github.com/abhishek-vedteq/promptdiff.git"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^5.0.127",
     "@ai-sdk/anthropic": "^4.0.91",
+    "@ai-sdk/azure": "^4.0.112",
     "@ai-sdk/google": "^4.0.107",
     "@ai-sdk/openai": "^4.0.104",
+    "@ai-sdk/openai-compatible": "^3.0.80",
     "@babel/parser": "^8.0.8",
     "@clack/prompts": "^1.8.1",
     "ai": "^7.0.156",

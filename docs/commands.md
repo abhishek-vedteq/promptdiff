@@ -21,6 +21,11 @@ Compares `<file>` at a git ref against the working copy. `run` is the default co
 | `-r, --runs <n>`               | Runs per case per version.                                                  | `1`                      |
 | `--concurrency <n>`            | Max parallel API calls.                                                     | `4`                      |
 | `--no-cache`                   | Skip the result cache (don't read from it or write to it).                  |                          |
+| `--vs <provider:model>`       | Compare two models on the same prompt instead of two prompt versions. See [Models](./models.md#comparing-two-models). | |
+| `--approve`                    | Save this run's new answers as the approved ones (`promptdiff-snapshots/`). | |
+| `--snapshot`                   | Compare with the approved answers instead of the old prompt. See [Snapshots](./snapshots-and-bisect.md). | |
+| `--batch`                      | Send calls as one provider batch job: about half price, results take longer. See [Models](./models.md#batch-mode). | |
+| `--run-code`                   | Allow test cases to build their message by calling your code (`from`). | |
 | `--compare <mode>`             | `words` (free, word overlap) or `semantic` (an LLM judge compares meaning). See [LLM judge](./llm-judge.md). | `words` |
 | `--judge <provider:model>`     | Model for `llm-rubric` checks and semantic comparison.                     | `--model`                |
 | `--max-cost <usd>`             | Refuse to start if the estimate is higher, and stop once actual spend reaches it. See [Cost controls](./cost-controls.md). | |
@@ -49,6 +54,14 @@ promptdiff prompts/support.md --base main --compare semantic --max-cost 1
 promptdiff prompts/support.md --base main --dry-run
 promptdiff src/prompts/email.prompt.ts#EMAIL_SYSTEM_PROMPT --base main
 ```
+
+## `promptdiff cases generate <prompt>`
+
+Has a model draft test cases from a prompt. Options: `-n <count>` (default 12), `-o <file>`, `-m <provider:model>`, `--with-checks`, `--append`, `--force`. See [Test cases](./test-cases.md#writing-test-cases-for-you).
+
+## `promptdiff bisect <prompt> --good <ref>`
+
+Finds the first version of a prompt whose checks fail. Options: `--bad <ref>` (default: working copy), `--case <id...>`, `-m`, `-c <cases file>`. See [Bisect](./snapshots-and-bisect.md#finding-the-change-that-broke-something-bisect).
 
 ## `promptdiff login [provider]`
 

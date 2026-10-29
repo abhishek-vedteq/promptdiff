@@ -7,6 +7,11 @@ describe("wordDistance", () => {
     expect(wordDistance("a b c", "x y z")).toBe(1);
   });
 
+  it("counts punctuation the same on both sides (regression: commas once made different sentences look identical)", () => {
+    expect(wordDistance("Hello there, how can I help?", "Hello friend, how can I help?")).toBeGreaterThan(0.1);
+    expect(wordDistance("Refunds take 5 days.", "What is your order number?")).toBeGreaterThan(0.8);
+  });
+
   it("is proportional to the share of changed words", () => {
     const d = wordDistance("one two three four", "one two three five");
     expect(d).toBeGreaterThan(0.2);

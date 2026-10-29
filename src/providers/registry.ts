@@ -1,12 +1,25 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogle } from "@ai-sdk/google";
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { createAzure } from "@ai-sdk/azure";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { aiSdkBatchClient } from "../batch.js";
 import { PromptdiffError } from "../errors.js";
 import { AiSdkProvider } from "./ai-sdk.js";
 import { ClaudeCodeProvider, CodexProvider } from "./cli.js";
 import { mockProviderDefinition } from "./mock.js";
 import type { Credential, ProviderDefinition } from "./types.js";
 import { verifyWithRequest } from "./verify.js";
+
+const ollamaBaseURL = (env: NodeJS.ProcessEnv) => (env.OLLAMA_BASE_URL ?? "http://localhost:11434/v1").replace(/\/$/, "");
+
+/** OAuth tokens (from `ant auth login` or ANTHROPIC_AUTH_TOKEN) go in a Bearer header with the OAuth beta flag. */
+function anthropicFor(credential: Credential) {
+  return credential.kind === "auth-token"
+    ? createAnthropic({ authToken: credential.token, headers: { "anthropic-beta": "oauth-2025-04-20" } })
+    : createAnthropic({ apiKey: apiKeyOf(credential, "Anthropic") });
+}
 
 function apiKeyOf(credential: Credential, provider: string): string {
   if (credential.kind !== "api-key") throw new PromptdiffError(`${provider} needs an API key.`);
@@ -28,13 +41,10 @@ const definitions: ProviderDefinition[] = [
     verifyKey: (key, fetchImpl) =>
       verifyWithRequest("https://api.anthropic.com/v1/models?limit=1", { "x-api-key": key, "anthropic-version": "2023-06-01" }, "Anthropic", fetchImpl),
     create: (credential) => {
-      const anthropic =
-        credential.kind === "auth-token"
-          ? // OAuth tokens (from `ant auth login` or ANTHROPIC_AUTH_TOKEN) go in a Bearer header with the OAuth beta flag.
-            createAnthropic({ authToken: credential.token, headers: { "anthropic-beta": "oauth-2025-04-20" } })
-          : createAnthropic({ apiKey: apiKeyOf(credential, "Anthropic") });
+      const anthropic = anthropicFor(credential);
       return new AiSdkProvider("anthropic", (model) => anthropic(model));
     },
+    createBatchClient: (credential) => aiSdkBatchClient(anthropicFor(credential)),
   },
   {
     id: "openai",
@@ -47,6 +57,7 @@ const definitions: ProviderDefinition[] = [
       const openai = createOpenAI({ apiKey: apiKeyOf(credential, "OpenAI") });
       return new AiSdkProvider("openai", (model) => openai(model));
     },
+    createBatchClient: (credential) => aiSdkBatchClient(createOpenAI({ apiKey: apiKeyOf(credential, "OpenAI") })),
   },
   {
     id: "google",
@@ -60,6 +71,65 @@ const definitions: ProviderDefinition[] = [
     create: (credential) => {
       const google = createGoogle({ apiKey: apiKeyOf(credential, "Google") });
       return new AiSdkProvider("google", (model) => google(model));
+    },
+    createBatchClient: (credential) => aiSdkBatchClient(createGoogle({ apiKey: apiKeyOf(credential, "Google") })),
+  },
+  {
+    id: "ollama",
+    displayName: "Ollama (local models)",
+    envVar: "",
+    keyUrl: "",
+    kind: "api",
+    requiresKey: false,
+    checkReady: async (env) => {
+      const base = ollamaBaseURL(env);
+      try {
+        const res = await fetch(`${base}/models`, { signal: AbortSignal.timeout(1500) });
+        if (!res.ok) return { ready: false, detail: `not responding at ${base}` };
+        const body = (await res.json()) as { data?: { id: string }[] };
+        const models = body.data?.map((m) => m.id) ?? [];
+        return { ready: true, detail: `running, ${models.length} model${models.length === 1 ? "" : "s"}${models.length ? `: ${models.slice(0, 3).join(", ")}${models.length > 3 ? ", …" : ""}` : ""}` };
+      } catch {
+        return { ready: false, detail: `not running (start it with \`ollama serve\`)` };
+      }
+    },
+    create: () => {
+      const ollama = createOpenAICompatible({ name: "ollama", baseURL: ollamaBaseURL(process.env) });
+      return new AiSdkProvider("ollama", (model) => ollama(model));
+    },
+  },
+  {
+    id: "azure",
+    displayName: "Azure OpenAI",
+    envVar: "AZURE_API_KEY",
+    keyUrl: "https://portal.azure.com",
+    kind: "api",
+    create: (credential) => {
+      const env = process.env;
+      if (!env.AZURE_RESOURCE_NAME && !env.AZURE_OPENAI_BASE_URL) {
+        throw new PromptdiffError("Azure OpenAI needs your resource name.", {
+          hint: "Set AZURE_RESOURCE_NAME (the <name> in https://<name>.openai.azure.com), or AZURE_OPENAI_BASE_URL. The model id is your deployment name: --model azure:<deployment>.",
+        });
+      }
+      const azure = createAzure({
+        apiKey: apiKeyOf(credential, "Azure OpenAI"),
+        ...(env.AZURE_OPENAI_BASE_URL ? { baseURL: env.AZURE_OPENAI_BASE_URL } : { resourceName: env.AZURE_RESOURCE_NAME }),
+      });
+      return new AiSdkProvider("azure", (deployment) => azure(deployment));
+    },
+  },
+  {
+    id: "bedrock",
+    displayName: "AWS Bedrock",
+    envVar: "AWS_BEARER_TOKEN_BEDROCK",
+    keyUrl: "https://console.aws.amazon.com/bedrock",
+    kind: "api",
+    ambient: (env) => (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY ? `AWS credentials from AWS_ACCESS_KEY_ID (${env.AWS_REGION ?? env.AWS_DEFAULT_REGION ?? "no region set"})` : undefined),
+    create: (credential) => {
+      const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+      if (!region) throw new PromptdiffError("AWS Bedrock needs a region.", { hint: "Set AWS_REGION, e.g. export AWS_REGION=us-east-1" });
+      const bedrock = createAmazonBedrock({ region, ...(credential.kind === "api-key" ? { apiKey: credential.key } : {}) });
+      return new AiSdkProvider("bedrock", (model) => bedrock(model));
     },
   },
   {

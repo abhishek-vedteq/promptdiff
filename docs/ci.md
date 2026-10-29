@@ -2,7 +2,52 @@
 
 promptdiff reads keys from environment variables, so CI only needs your provider's key stored as a secret. Use `--fail-on-change` to make the job fail (exit code 2) when outputs change, and `--html` to keep a report you can open later.
 
-## GitHub Actions
+## The GitHub Action
+
+The simplest setup:
+
+```yaml
+# .github/workflows/prompts.yml
+name: Prompt diff
+on:
+  pull_request:
+    paths: ["prompts/**", "src/**/*.prompt.ts", "cases.jsonl"]
+
+permissions:
+  contents: read
+  pull-requests: write   # for the PR comment
+
+jobs:
+  promptdiff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # promptdiff needs the base branch's history
+      - uses: abhishek-vedteq/promptdiff@v1
+        with:
+          prompt: |
+            prompts/support.md
+            src/email/prompts/recruiter.prompt.ts#RECRUITER_SYSTEM_PROMPT
+          fail-on: regression
+          max-cost: "2"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `prompt` | (required) | One or more prompts (files or `file#NAME`), separated by spaces or new lines |
+| `base` | the PR's base branch | Git ref to compare against |
+| `model` | from `promptdiff.config.yaml` | `provider:model-id` |
+| `fail-on` | `regression` | `regression`, `change`, `check`, or `none` |
+| `comment` | `true` | Post (and update) a PR comment per prompt |
+| `max-cost` | (none) | Budget in USD |
+| `args` | (none) | Any other flags, e.g. `--runs 3 --compare semantic` |
+
+Outputs: `changed` and `regressions` (counts across all prompts). The HTML reports are uploaded as the `promptdiff-report` artifact.
+
+## Using the CLI directly in GitHub Actions
 
 ```yaml
 # .github/workflows/prompts.yml

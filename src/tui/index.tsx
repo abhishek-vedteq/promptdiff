@@ -5,6 +5,7 @@ import chalk from "chalk";
 import { render } from "ink";
 import { cliLoginCheckers, resolveCredential } from "../auth.js";
 import { loadCases } from "../cases.js";
+import { casesGenerateCommand } from "../commands/cases.js";
 import { SAMPLE_PROMPT, initCommand } from "../commands/init.js";
 import { loginCommand } from "../commands/login.js";
 import { runCommand } from "../commands/run.js";
@@ -93,6 +94,7 @@ export async function startInteractive(cli: CliRunOptions = {}): Promise<void> {
     promptFiles: (base, patterns, configDir) => discoverPrompts(cwd, base, patterns, configDir),
     cases: (file) => casesInfo(cwd, file),
     init: (out, model) => initCommand({ model }, cwd, out),
+    generateCases: (prompt, model, out) => casesGenerateCommand(prompt, { model }, { cwd, env, out }),
     gitInit: async () => {
       await git(["init", "-q"], cwd);
     },
