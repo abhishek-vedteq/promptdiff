@@ -4,11 +4,22 @@
 
 Requires Node.js 22 or newer and git. Works on macOS, Linux, and Windows.
 
+Install straight from GitHub (npm builds it during install):
+
 ```bash
-npm install -g promptdiff
-# or run it without installing:
-npx promptdiff --help
+npm install -g github:abhishek-vedteq/promptdiff
+promptdiff --help
 ```
+
+Or clone it, if you want to read or change the code:
+
+```bash
+git clone https://github.com/abhishek-vedteq/promptdiff.git
+cd promptdiff
+npm install && npm run build && npm link
+```
+
+To update, run the install command again, or `git pull && npm run build` in your clone.
 
 ## Set up
 

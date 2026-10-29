@@ -6,7 +6,6 @@
 
 See how editing a prompt changes your model's answers, before you ship it.
 
-[![npm](https://img.shields.io/npm/v/promptdiff.svg)](https://www.npmjs.com/package/promptdiff)
 [![CI](https://github.com/abhishek-vedteq/promptdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/abhishek-vedteq/promptdiff/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 ![Node 22+](https://img.shields.io/badge/node-22%2B-339933)
@@ -22,7 +21,7 @@ You changed one sentence in your system prompt. Did the bot get better? Did it s
 Usually you find out in production. **promptdiff tells you before you merge.** It runs your test cases through the old version of the prompt (from git) and your new one, then shows you, case by case, exactly how the answers changed.
 
 ```bash
-npm install -g promptdiff
+npm install -g github:abhishek-vedteq/promptdiff
 cd your-project
 promptdiff
 ```
@@ -41,10 +40,20 @@ promptdiff
 
 ## Quick start
 
+Install it straight from GitHub. It builds itself during install:
+
 ```bash
-npm install -g promptdiff        # or run it without installing: npx promptdiff
+npm install -g github:abhishek-vedteq/promptdiff
 cd your-project
 promptdiff
+```
+
+Or from a clone, if you want to read or change the code:
+
+```bash
+git clone https://github.com/abhishek-vedteq/promptdiff.git
+cd promptdiff
+npm install && npm run build && npm link     # `promptdiff` is now on your PATH
 ```
 
 On first launch, promptdiff checks what it needs and offers to fix each missing piece with Enter:
@@ -56,7 +65,7 @@ On first launch, promptdiff checks what it needs and offers to fix each missing 
 
 Then edit a prompt, save, and press **Enter**.
 
-> Requires Node.js 22+ and git. Works on macOS, Linux, and Windows.
+> Requires Node.js 22+ and git. Works on macOS, Linux, and Windows. To update, run the install command again (or `git pull && npm run build` in your clone).
 
 ## What it looks like
 

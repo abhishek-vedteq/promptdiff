@@ -71,7 +71,7 @@ jobs:
         with:
           node-version: 22
       - run: >
-          npx promptdiff prompts/support.md
+          npx --yes github:abhishek-vedteq/promptdiff prompts/support.md
           --base origin/${{ github.base_ref }}
           --runs 3 --max-cost 2
           --github-comment --fail-on-regression

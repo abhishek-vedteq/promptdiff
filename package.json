@@ -1,6 +1,7 @@
 {
   "name": "promptdiff",
   "version": "0.1.0",
+  "private": true,
   "description": "git diff for prompts: run test cases through two versions of a prompt and diff the outputs",
   "type": "module",
   "bin": {
@@ -8,12 +9,6 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
   "files": [
     "dist",
     "python",
@@ -21,6 +16,12 @@
     "README.md",
     "LICENSE"
   ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "engines": {
     "node": ">=22"
   },
@@ -31,7 +32,7 @@
     "test:watch": "vitest",
     "lint": "eslint . && tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run lint && npm test && npm run build"
+    "prepare": "npm run build"
   },
   "keywords": [
     "prompt",

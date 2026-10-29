@@ -83,13 +83,12 @@ python3 -m venv /tmp/pd-venv && /tmp/pd-venv/bin/pip install pillow pyte
 
 It builds a throwaway demo repo, edits its prompt, drives `promptdiff` in a pseudo-terminal, and renders each screen. It makes real model calls (8 by default).
 
-## Releasing (maintainers)
+## Releases
+
+promptdiff isn't published to npm; people install it from GitHub (`npm install -g github:abhishek-vedteq/promptdiff`). To cut a release:
 
 ```bash
-npm version patch   # or minor / major; creates a vX.Y.Z commit and tag
+npm version patch          # or minor / major: bumps package.json and tags vX.Y.Z
 git push --follow-tags
+git tag -f v1 && git push -f origin v1   # move the GitHub Action's v1 tag to this release
 ```
-
-To update the GitHub Action's `v1` tag to the latest release: `git tag -f v1 && git push -f origin v1`.
-
-The Release workflow publishes to npm when a `v*` tag is pushed (needs the `NPM_TOKEN` repo secret).

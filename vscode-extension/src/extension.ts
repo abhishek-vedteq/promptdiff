@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 const CODE_FILE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|py|ya?ml|json)$/i;
 
 function command(): string[] {
-  const configured = vscode.workspace.getConfiguration("promptdiff").get<string>("command") ?? "npx --yes promptdiff";
+  const configured = vscode.workspace.getConfiguration("promptdiff").get<string>("command") ?? "promptdiff";
   return configured.split(/\s+/).filter(Boolean);
 }
 
